@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>통합 테스트 페이지</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 1100px;
+            margin: 30px auto;
+            padding: 20px;
+            background: #f8f9fa;
+            color: #222;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
+        h2 {
+            margin-top: 0;
+            font-size: 20px;
+        }
+        h3 {
+            margin-bottom: 10px;
+        }
+        input, select, button, textarea {
+            width: 100%;
+            padding: 10px;
+            margin-top: 6px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .small {
+            font-size: 13px;
+            color: #666;
+        }
+        pre {
+            background: #111;
+            color: #0f0;
+            padding: 12px;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+        .chat-box {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            min-height: 220px;
+            max-height: 360px;
+            overflow-y: auto;
+            padding: 12px;
+            margin-bottom: 10px;
+        }
+        .ai-msg {
+            background: #eef6ff;
+            color: #0056b3;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+        .user-msg {
+            background: #f0fff4;
+            color: #1f7e34;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            text-align: right;
+        }
+        .question-box {
+            background: #e9ecef;
+            border-left: 4px solid #007bff;
+            padding: 14px;
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 10px;
+        }
+        .feedback-box {
+            background: #f1f3f5;
+            border-left: 4px solid #6c757d;
+            padding: 14px;
+            border-radius: 0 8px 8px 0;
+            white-space: pre-wrap;
+            margin-top: 10px;
+        }
+        .report-item {
+            background: #fafafa;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 14px;
+        }
+        .audio-comparison {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        .audio-unit {
+            flex: 1;
+            min-width: 220px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+        }
+        .audio-unit label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 12px;
+            font-weight: bold;
+            color: #555;
+        }
+        audio {
+            width: 100%;
+        }
+        .history-session {
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 14px;
+            background: #fafafa;
+        }
+        .history-block {
+            background: #fff;
+            border-left: 4px solid #007bff;
+            padding: 10px;
+            margin-top: 8px;
+        }
+        .tech-options {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            padding: 10px;
+            background: #fafafa;
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>통합 테스트 페이지</h1>
+
+    <div class="card">
+        <h2>1. 회원가입 / 로그인</h2>
+        <div class="row">
+            <div>
+                <h3>회원가입</h3>
+                <input type="email" id="signupEmail" placeholder="이메일">
+                <input type="password" id="signupPassword" placeholder="비밀번호">
+                <input type="text" id="signupNickname" placeholder="닉네임(선택)">
+                <button onclick="signup()">회원가입</button>
+            </div>
+            <div>
+                <h3>로그인</h3>
+                <input type="email" id="loginEmail" placeholder="이메일">
+                <input type="password" id="loginPassword" placeholder="비밀번호">
+                <button onclick="login()">로그인</button>
+            </div>
+        </div>
+
+        <h3>현재 토큰</h3>
+        <input type="text" id="tokenInput" placeholder="로그인 후 access_token이 자동 입력됨">
+        <button onclick="getMe()">내 정보 조회 (/me)</button>
+
+        <h3>응답 결과</h3>
+        <pre id="authOutput">여기에 인증 결과가 표시됩니다.</pre>
+    </div>
+
+    <div class="card">
+        <h2>2. 유튜브 스피킹 테스트</h2>
+        <input type="text" id="youtubeUrl" placeholder="유튜브 URL 입력">
+        <button id="genBtn" onclick="fetchQuestions()">질문 생성</button>
+
+        <div id="youtubeTestArea" style="display:none;">
+            <div id="stepIndicator" class="small">Question 1</div>
+            <div id="questionArea" class="question-box">질문이 여기에 표시됩니다.</div>
+            <div id="speechStatus" class="small">대기 중</div>
+            <button id="startBtn">답변 시작</button>
+            <button id="stopBtn" disabled>답변 종료</button>
+        </div>
+
+        <h3>최종 리포트</h3>
+        <div id="youtubeReport">아직 테스트하지 않았습니다.</div>
+    </div>
+
+    <div class="card">
+        <h2>3. 면접 테스트</h2>
+
+        <div class="row">
+            <div>
+                <label>직무</label>
+                <select id="posSelect" onchange="updateTechOptions()">
+                    <option value="">-- 직무를 선택하세요 --</option>
+                    <option value="Frontend">Frontend</option>
+                    <option value="Backend">Backend</option>
+                    <option value="Embedded/IoT">Embedded/IoT</option>
+                </select>
+            </div>
+            <div>
+                <label>경력 수준</label>
+                <select id="expLevel">
+                    <option value="Junior (Entry-level)">신입/인턴</option>
+                    <option value="Junior (1-3 years)">주니어</option>
+                    <option value="Senior (5+ years)">시니어</option>
+                </select>
+            </div>
+        </div>
+
+        <label>기술 스택</label>
+        <div id="techSection" style="display:none;">
+            <div id="techCheckboxes" class="tech-options"></div>
+        </div>
+
+        <label>프로젝트 요약</label>
+        <input type="text" id="projSum" placeholder="예: FastAPI를 활용한 실시간 면접 시스템 개발">
+
+        <label>면접 스타일</label>
+        <select id="interMode">
+            <option value="Friendly and Supportive">친절한 멘토형</option>
+            <option value="Sharp and Analytical">날카로운 분석형</option>
+            <option value="Aggressive Stress Interview">압박 면접형</option>
+        </select>
+
+        <label>자기소개서 PDF (선택)</label>
+        <input type="file" id="pdfFile" accept=".pdf">
+
+        <button id="interviewStartBtn" onclick="startIntegratedInterview()">면접 시작</button>
+
+        <div class="chat-box" id="chatBox">
+            <div class="ai-msg">시스템: 정보를 입력하고 버튼을 누르면 면접이 시작됩니다.</div>
+        </div>
+
+        <input type="text" id="userAnswer" placeholder="영어로 답변 입력" disabled>
+        <button id="sendBtn" onclick="sendAnswer()" disabled>답변 전송</button>
+    </div>
+
+    <div class="card">
+        <h2>4. 히스토리 조회</h2>
+        <button onclick="loadHistory()">히스토리 불러오기</button>
+        <pre id="historyRaw">여기에 원본 JSON이 표시됩니다.</pre>
+        <div id="historyView">아직 불러온 히스토리가 없습니다.</div>
+    </div>
+
+    <script>
+        const API_BASE = "http://127.0.0.1:8000";
+
+        const techData = {
+            "Frontend": ["React", "Vue", "TypeScript", "Next.js", "Tailwind CSS", "Redux"],
+            "Backend": ["FastAPI", "Spring Boot", "Node.js", "PostgreSQL", "Redis", "Django"],
+            "Embedded/IoT": ["C/C++", "FreeRTOS", "MQTT", "ESP32", "Raspberry Pi", "Arduino"]
+        };
+
+        let questions = [];
+        let currentStep = 0;
+        let testResults = [];
+        let currentSessionId = null;
+        let socket, audioContext, processor, mediaRecorder, localChunks = [];
+
+        let currentInterviewQuestion = "";
+        let currentInterviewSessionId = null;
+        let currentInterviewQuestionId = null;
+
+        function getToken() {
+            return document.getElementById("tokenInput").value.trim();
+        }
+
+        function setAuthOutput(data) {
+            document.getElementById("authOutput").textContent =
+                typeof data === "string" ? data : JSON.stringify(data, null, 2);
+        }
+
+        async function signup() {
+            const email = document.getElementById("signupEmail").value.trim();
+            const password = document.getElementById("signupPassword").value.trim();
+            const nickname = document.getElementById("signupNickname").value.trim();
+
+            try {
+                const res = await fetch(`${API_BASE}/signup`, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({
+                        email,
+                        password,
+                        nickname: nickname || null
+                    })
+                });
+                const data = await res.json();
+                setAuthOutput(data);
+            } catch (err) {
+                setAuthOutput("회원가입 실패: " + err);
+            }
+        }
+
+        async function login() {
+            const email = document.getElementById("loginEmail").value.trim();
+            const password = document.getElementById("loginPassword").value.trim();
+
+            try {
+                const res = await fetch(`${API_BASE}/login`, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await res.json();
+                setAuthOutput(data);
+
+                if (data.access_token) {
+                    document.getElementById("tokenInput").value = data.access_token;
+                }
+            } catch (err) {
+                setAuthOutput("로그인 실패: " + err);
+            }
+        }
+
+        async function getMe() {
+            try {
+                const token = getToken();
+                const res = await fetch(`${API_BASE}/me`, {
+                    headers: {
+                        "Authorization": `Bearer ${token}`
+                    }
+                });
+                const data = await res.json();
+                setAuthOutput(data);
+            } catch (err) {
+                setAuthOutput("내 정보 조회 실패: " + err);
+            }
+        }
+
+        async function fetchQuestions() {
+            const token = getToken();
+            const url = document.getElementById("youtubeUrl").value.trim();
+            if (!token) return alert("먼저 로그인해서 토큰을 받아야 합니다.");
+            if (!url) return alert("유튜브 URL을 입력하세요.");
+
+            document.getElementById("genBtn").innerText = "분석 중...";
+
+            try {
+                const res = await fetch(`${API_BASE}/generate-questions?url=${encodeURIComponent(url)}`, {
+                    headers: {
+                        "Authorization": `Bearer ${token}`
+                    }
+                });
+                const data = await res.json();
+
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+
+                currentSessionId = data.session_id;
+                questions = data.questions || [];
+                currentStep = 0;
+                testResults = [];
+
+                document.getElementById("youtubeTestArea").style.display = "block";
+                renderStep();
+            } catch (err) {
+                alert("질문 생성 실패: " + err);
+            } finally {
+                document.getElementById("genBtn").innerText = "질문 생성";
+            }
+        }
+
+        function renderStep() {
+            const q = questions[currentStep];
+            document.getElementById("stepIndicator").innerText = `Question ${currentStep + 1} / ${questions.length}`;
+            document.getElementById("questionArea").innerHTML = `
+                <div><strong>${q.question_text}</strong></div>
+                <div class="small">${q.question_ko || ""}</div>
+                <div class="small" style="margin-top:8px;"><strong>모범 답안:</strong> ${q.model_answer || "-"}</div>
+            `;
+            document.getElementById("speechStatus").innerText = "답변 시작 버튼을 눌러주세요.";
+        }
+
+        document.getElementById("startBtn").onclick = async () => {
+            const token = getToken();
+            const q = questions[currentStep];
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+            mediaRecorder = new MediaRecorder(stream);
+            localChunks = [];
+            mediaRecorder.ondataavailable = (e) => localChunks.push(e.data);
+            mediaRecorder.start();
+
+            const wsUrl = `ws://${window.location.host}/ws/audio?token=${encodeURIComponent(token)}&session_id=${currentSessionId}&question_id=${q.id}`;
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = async () => {
+                document.getElementById("speechStatus").innerText = "녹음 중...";
+                audioContext = new AudioContext({ sampleRate: 16000 });
+                const source = audioContext.createMediaStreamSource(stream);
+                processor = audioContext.createScriptProcessor(2048, 1, 1);
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                processor.onaudioprocess = (e) => {
+                    if (socket.readyState === 1) {
+                        const input = e.inputBuffer.getChannelData(0);
+                        const pcm = new Int16Array(input.length);
+                        for (let i = 0; i < input.length; i++) {
+                            pcm[i] = Math.max(-1, Math.min(1, input[i])) * 0x7FFF;
+                        }
+                        socket.send(pcm.buffer);
+                    }
+                };
+            };
+
+            socket.onmessage = (event) => {
+                const res = JSON.parse(event.data);
+                const audioBlob = new Blob(localChunks, { type: 'audio/wav' });
+                res.local_voice_url = URL.createObjectURL(audioBlob);
+                res.q_text = q.question_text;
+                testResults.push(res);
+
+                if (currentStep < questions.length - 1) {
+                    currentStep++;
+                    renderStep();
+                    document.getElementById("startBtn").disabled = false;
+                    document.getElementById("stopBtn").disabled = true;
+                } else {
+                    showYoutubeFinalReport();
+                }
+            };
+
+            document.getElementById("startBtn").disabled = true;
+            document.getElementById("stopBtn").disabled = false;
+        };
+
+        document.getElementById("stopBtn").onclick = () => {
+            if (mediaRecorder) mediaRecorder.stop();
+            if (processor) processor.disconnect();
+            if (audioContext) audioContext.close();
+
+            if (socket && socket.readyState === 1) {
+                const q = questions[currentStep];
+                socket.send(JSON.stringify({
+                    type: "stop",
+                    session_id: currentSessionId,
+                    question_id: q.id,
+                    question: q.question_text
+                }));
+                document.getElementById("speechStatus").innerText = "분석 중...";
+            }
+            document.getElementById("stopBtn").disabled = true;
+        };
+
+        function showYoutubeFinalReport() {
+            let html = "";
+            testResults.forEach((res, idx) => {
+                html += `
+                    <div class="report-item">
+                        <h4>Question ${idx + 1}: ${res.q_text}</h4>
+                        <p><strong>내 답변:</strong> ${res.user_said}</p>
+                        <p><strong>발음 점수:</strong> ${res.score.pronunciation}</p>
+                        <div class="feedback-box">${(res.feedback || "").replace(/\n/g, "<br>")}</div>
+                        <div class="audio-comparison">
+                            <div class="audio-unit">
+                                <label>내 목소리</label>
+                                <audio src="${res.local_voice_url}" controls></audio>
+                            </div>
+                            <div class="audio-unit">
+                                <label>정석 발음</label>
+                                ${res.user_tts_url ? `<audio src="${res.user_tts_url}" controls></audio>` : "없음"}
+                            </div>
+                            <div class="audio-unit">
+                                <label>모범 답안</label>
+                                ${res.model_tts_url ? `<audio src="${res.model_tts_url}" controls></audio>` : "없음"}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            document.getElementById("youtubeReport").innerHTML = html || "리포트 없음";
+        }
+
+        function updateTechOptions() {
+            const pos = document.getElementById('posSelect').value;
+            const techDiv = document.getElementById('techCheckboxes');
+            const techSection = document.getElementById('techSection');
+
+            techDiv.innerHTML = "";
+            if (techData[pos]) {
+                techSection.style.display = "block";
+                techData[pos].forEach(tech => {
+                    techDiv.innerHTML += `<label><input type="checkbox" name="tech" value="${tech}"> ${tech}</label>`;
+                });
+            } else {
+                techSection.style.display = "none";
+            }
+        }
+
+        async function startIntegratedInterview() {
+            const token = getToken();
+            const pos = document.getElementById('posSelect').value;
+            const proj = document.getElementById('projSum').value;
+            const fileInput = document.getElementById('pdfFile');
+            const startBtn = document.getElementById('interviewStartBtn');
+
+            if (!token) {
+                alert("먼저 로그인하세요.");
+                return;
+            }
+            if (!pos || !proj) {
+                alert("직무와 프로젝트 요약은 필수입니다.");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("position", pos);
+            formData.append("experience_level", document.getElementById('expLevel').value);
+            formData.append("project_summary", proj);
+            formData.append("interview_mode", document.getElementById('interMode').value);
+
+            const techs = Array.from(document.querySelectorAll('input[name="tech"]:checked')).map(el => el.value);
+            formData.append("tech_stack", JSON.stringify(techs));
+
+            if (fileInput.files[0]) {
+                formData.append("file", fileInput.files[0]);
+            }
+
+            startBtn.disabled = true;
+            addMessage("시스템", "입력한 정보로 면접 질문 생성 중...", "ai-msg");
+
+            try {
+                const response = await fetch(`${API_BASE}/interview/start-unified`, {
+                    method: 'POST',
+                    headers: {
+                        "Authorization": `Bearer ${token}`
+                    },
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (data.status === "success") {
+                    currentInterviewSessionId = data.session_id;
+                    currentInterviewQuestionId = data.question_id;
+                    currentInterviewQuestion = data.question;
+                    addMessage("AI 면접관", currentInterviewQuestion, "ai-msg");
+                    activateInterviewInput();
+                } else {
+                    alert("에러: " + data.message);
+                }
+            } catch (error) {
+                alert("서버 연결 실패");
+            } finally {
+                startBtn.disabled = false;
+            }
+        }
+
+        async function sendAnswer() {
+            const token = getToken();
+            const answerInput = document.getElementById('userAnswer');
+            const answer = answerInput.value.trim();
+            if (!answer) return;
+
+            addMessage("나", answer, "user-msg");
+            answerInput.value = "";
+
+            try {
+                const response = await fetch(`${API_BASE}/interview/answer`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        session_id: currentInterviewSessionId,
+                        current_question_id: currentInterviewQuestionId,
+                        current_question: currentInterviewQuestion,
+                        user_answer: answer
+                    })
+                });
+
+                const data = await response.json();
+                currentInterviewQuestion = data.follow_up;
+                currentInterviewQuestionId = data.next_question_id;
+                addMessage("AI 면접관", currentInterviewQuestion, "ai-msg");
+            } catch (error) {
+                alert("답변 전송 에러");
+            }
+        }
+
+        function activateInterviewInput() {
+            document.getElementById('userAnswer').disabled = false;
+            document.getElementById('sendBtn').disabled = false;
+        }
+
+        function addMessage(sender, text, className) {
+            const chatBox = document.getElementById('chatBox');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = className;
+            msgDiv.innerHTML = `<strong>${sender}:</strong> ${text}`;
+            chatBox.appendChild(msgDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        async function loadHistory() {
+            const token = getToken();
+
+            try {
+                const res = await fetch(`${API_BASE}/history`, {
+                    method: "GET",
+                    headers: {
+                        "Authorization": `Bearer ${token}`
+                    }
+                });
+
+                const data = await res.json();
+                document.getElementById("historyRaw").textContent = JSON.stringify(data, null, 2);
+                renderHistory(data.history || []);
+            } catch (err) {
+                document.getElementById("historyRaw").textContent = "히스토리 조회 실패: " + err;
+                document.getElementById("historyView").innerHTML = "<p>히스토리 조회 실패</p>";
+            }
+        }
+
+        function renderHistory(history) {
+            const view = document.getElementById("historyView");
+
+            if (!history.length) {
+                view.innerHTML = "<p>저장된 히스토리가 없습니다.</p>";
+                return;
+            }
+
+            let html = "";
+            history.forEach(session => {
+                html += `
+                    <div class="history-session">
+                        <h3>세션 #${session.session_id}</h3>
+                        <p><strong>유형:</strong> ${session.session_type}</p>
+                        <p><strong>제목:</strong> ${session.title || "-"}</p>
+                        <p><strong>URL:</strong> ${session.source_url || "-"}</p>
+                        <p><strong>생성일:</strong> ${session.created_at}</p>
+
+                        <h4>질문</h4>
+                        ${
+                            session.questions.length
+                            ? session.questions.map(q => `
+                                <div class="history-block">
+                                    <p><strong>질문:</strong> ${q.question_text}</p>
+                                    <p><strong>해석:</strong> ${q.question_ko || "-"}</p>
+                                    <p><strong>모범 답안:</strong> ${q.model_answer || "-"}</p>
+                                </div>
+                            `).join("")
+                            : "<p>질문 없음</p>"
+                        }
+
+                        <h4>로그</h4>
+                        ${
+                            session.logs.length
+                            ? session.logs.map(log => `
+                                <div class="history-block">
+                                    <p><strong>인식 문장:</strong> ${log.recognized_text || "-"}</p>
+                                    <p><strong>정확도:</strong> ${log.accuracy_score}</p>
+                                    <p><strong>발음:</strong> ${log.pronunciation_score}</p>
+                                    <p><strong>유창성:</strong> ${log.fluency_score}</p>
+                                    <p><strong>피드백:</strong> ${log.coaching_message || "-"}</p>
+                                </div>
+                            `).join("")
+                            : "<p>로그 없음</p>"
+                        }
+                    </div>
+                `;
+            });
+
+            view.innerHTML = html;
+        }
+    </script>
+</body>
+</html>

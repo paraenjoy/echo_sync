@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+websockets
+python-dotenv
+python-multipart
+yt-dlp
+openai-whisper
+PyMuPDF
+sqlmodel
+sqlalchemy
+psycopg2-binary
+azure-cognitiveservices-speech
+google-generativeai
+passlib[bcrypt]
+pyjwt
+email-validator
