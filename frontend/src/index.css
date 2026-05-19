@@ -1,0 +1,135 @@
+/* ─────────────────────────────────────────────────────────────
+   sync. 디자인 토큰
+   - Editorial warmth: refined minimalism + warm precision
+   - 다크 베이스 + (향후) 라이트 토글
+   ───────────────────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* ── 따뜻한 다크 베이스 (순수 #000 회피) ─────────────────── */
+    --bg:           15 14 12;       /* #0F0E0C  warm near-black */
+    --bg-elevated:  26 24 21;       /* #1A1815  카드 표면 */
+    --bg-subtle:    37 34 30;       /* #25221E  hover/secondary */
+
+    --fg:           250 247 242;    /* #FAF7F2  warm off-white */
+    --fg-muted:     168 162 152;    /* #A8A298  보조 텍스트 */
+    --fg-subtle:    115 110 102;    /* #736E66  메타 정보 */
+
+    --border:       46 42 38;       /* #2E2A26  표면 구분선 */
+    --border-strong: 71 65 58;      /* #47413A  강조 구분선 */
+
+    /* ── Accent: Amber warmth ─────────────────────────────── */
+    --accent:       232 165 71;     /* #E8A547  primary accent */
+    --accent-fg:    15 14 12;       /* accent 위 텍스트 */
+    --accent-hover: 217 149 56;     /* #D99538 */
+
+    /* ── Score 그라데이션 (음소 히트맵 / 점수 카드) ─────────── */
+    --score-low:    220 38 38;      /* #DC2626  <60 */
+    --score-mid:    245 158 11;     /* #F59E0B  60-89 */
+    --score-high:   16 185 129;     /* #10B981  ≥90 */
+
+    /* ── 폰트 시스템 ──────────────────────────────────────── */
+    --font-display: "Fraunces", "Iowan Old Style", "Apple Garamond", Georgia, serif;
+    --font-sans:    "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --font-mono:    "Geist Mono", "SF Mono", "JetBrains Mono", Menlo, monospace;
+
+    /* ── 모션 ──────────────────────────────────────────────── */
+    --ease-out-quad: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    --ease-spring:   cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html, body {
+    @apply bg-bg text-fg;
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "ss02", "cv11";  /* Geist의 우아한 글리프 */
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Fraunces는 가변 폰트 → opsz로 사이즈별 자동 최적화 */
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    font-feature-settings: "ss01";
+    letter-spacing: -0.02em;
+  }
+
+  /* 모노 숫자: 점수 표기에 정렬감을 줌 */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 입력 필드 autofill 배경색 제거 (Chrome) */
+  input:-webkit-autofill {
+    -webkit-box-shadow: 0 0 0 1000px rgb(var(--bg-elevated)) inset;
+    -webkit-text-fill-color: rgb(var(--fg));
+    transition: background-color 5000s ease-in-out 0s;
+  }
+
+  /* 포커스 링: accent 톤 */
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent));
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* 모바일 탭 하이라이트 제거 */
+  button, a {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer utilities {
+  /* 점수 → 색상 매핑 유틸 (Tailwind arbitrary value 대안) */
+  .score-low  { color: rgb(var(--score-low)); }
+  .score-mid  { color: rgb(var(--score-mid)); }
+  .score-high { color: rgb(var(--score-high)); }
+
+  .bg-score-low  { background-color: rgb(var(--score-low) / 0.18); }
+  .bg-score-mid  { background-color: rgb(var(--score-mid) / 0.18); }
+  .bg-score-high { background-color: rgb(var(--score-high) / 0.18); }
+
+  /* 마이크 버튼 외곽 펄스 (recording 상태) */
+  @keyframes mic-pulse {
+    0%, 100% { opacity: 0.4; transform: scale(1); }
+    50%      { opacity: 0.8; transform: scale(1.08); }
+  }
+  .animate-mic-pulse {
+    animation: mic-pulse 2s var(--ease-out-quad) infinite;
+  }
+
+  /* processing 스켈레톤: 부드러운 shimmer */
+  @keyframes shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  .animate-shimmer {
+    background: linear-gradient(
+      90deg,
+      rgb(var(--bg-elevated)) 0%,
+      rgb(var(--bg-subtle)) 50%,
+      rgb(var(--bg-elevated)) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2.2s ease-in-out infinite;
+  }
+
+  /* 결과 카드 페이드 인 */
+  @keyframes fade-up {
+    0%   { opacity: 0; transform: translateY(8px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  .animate-fade-up {
+    animation: fade-up 0.5s var(--ease-out-quad) both;
+  }
+}
