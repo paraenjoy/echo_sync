@@ -15,10 +15,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MicButton } from "@/components/features/youtube/MicButton";
+import { MicButton } from "@/components/common/MicButton";
 import { WordHeatmap } from "@/components/features/youtube/WordHeatmap";
-import { ProcessingSkeleton } from "@/components/features/youtube/ProcessingSkeleton";
-import { ErrorModal } from "@/components/features/youtube/ErrorModal";
+import { ProcessingSkeleton } from "@/components/common/ProcessingSkeleton";
+import { ErrorModal } from "@/components/common/ErrorModal";
 import { useAudioStreamer } from "@/hooks/useAudioStreamer";
 import {
   useGenerateQuestions,
