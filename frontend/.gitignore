@@ -1,0 +1,16 @@
+# 프론트엔드 의존성 폴더
+node_modules/
+
+# 빌드 결과물
+dist/
+dist-ssr/
+
+# 환경 변수 (보안)
+.env
+.env.local
+
+# 기타 로그 및 캐시
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
