@@ -1,10 +1,11 @@
 fastapi
-uvicorn
+uvicorn[standard]
 websockets
 python-dotenv
 python-multipart
 yt-dlp
 openai-whisper
+numpy
 PyMuPDF
 sqlmodel
 sqlalchemy
@@ -12,5 +13,6 @@ psycopg2-binary
 azure-cognitiveservices-speech
 google-generativeai
 passlib[bcrypt]
+bcrypt<4.1
 pyjwt
 email-validator
