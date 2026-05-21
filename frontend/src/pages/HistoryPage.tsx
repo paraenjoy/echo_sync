@@ -45,7 +45,7 @@ export default function HistoryPage() {
   // callback ref 형태로 작성해 리스트가 갱신될 때마다 자동으로 재부착된다.
   const observerRef = useRef<IntersectionObserver | null>(null);
   const lastCardRef = useCallback(
-    (node: HTMLDivElement | null) => {
+    (node: HTMLLIElement | null) => {
       if (isFetchingNextPage) return;
       if (observerRef.current) observerRef.current.disconnect();
       if (!node) return;

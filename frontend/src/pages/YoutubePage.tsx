@@ -11,7 +11,8 @@
  *  - 두 단계 화면 (intro / practice)을 같은 페이지 안에서 전환
  *  - Editorial 미감: display serif 헤드라인 + 넉넉한 negative space
  */
-import { useEffect, useMemo, useState } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -280,6 +281,8 @@ function ResultSection({
   onNext,
   onRetry,
 }: ResultSectionProps) {
+  const navigate = useNavigate();
+
   const tier = getScoreTier(result.score.accuracy);
   const tierCls = scoreTierClasses[tier];
 
@@ -361,7 +364,7 @@ function ResultSection({
           </Button>
         )}
         {isLast && (
-          <Button variant="primary" onClick={() => (window.location.href = "/history")}>
+          <Button variant="primary" onClick={() => navigate("/history")}>
             기록 보러 가기
           </Button>
         )}

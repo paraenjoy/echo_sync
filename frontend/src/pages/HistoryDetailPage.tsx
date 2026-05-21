@@ -206,7 +206,7 @@ function OverallScoreCard({ logs }: { logs: HistoryLog[] }) {
       </div>
 
       <div className="grid grid-cols-3 gap-4">
-        <ScoreDisplay label="Accuracy" value={stats.accuracy} size="lg" highlight />
+        <ScoreDisplay label="Accuracy" value={stats.accuracy} size="lg" />
         <ScoreDisplay label="Pronunciation" value={stats.pronunciation} size="md" />
         <ScoreDisplay label="Fluency" value={stats.fluency} size="md" />
       </div>

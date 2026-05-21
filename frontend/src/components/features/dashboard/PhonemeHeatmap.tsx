@@ -60,11 +60,9 @@ function PhonemeCard({ item }: { item: WeakPhoneme }) {
   const tier = getScoreTier(item.avg_score);
   const cls = scoreTierClasses[tier];
 
-  // 실패율은 0~1 가정. 백엔드가 0~100으로 보내는 케이스도 방어
-  const failPct =
-    item.fail_rate > 1
-      ? Math.round(item.fail_rate)
-      : Math.round(item.fail_rate * 100);
+  // 백엔드 analyzer.py: fail_rate = (fail_count / total_count) * 100
+  // 항상 0~100 (퍼센트) 반환 → 직접 반올림하여 사용
+  const failPct = Math.round(item.fail_rate);
 
   return (
     <div
