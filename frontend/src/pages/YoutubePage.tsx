@@ -25,6 +25,7 @@ import {
   youtubeQueryKeys,
 } from "@/hooks/queries/useGenerateQuestions";
 import { cn, getScoreTier, scoreTierClasses } from "@/lib/utils";
+import { ScoreDisplay } from "@/components/common/ScoreDisplay";
 import { getErrorMessage } from "@/lib/api";
 import type { YoutubeQuestion } from "@/types/youtube";
 
@@ -291,9 +292,9 @@ function ResultSection({
         </p>
 
         <div className="grid grid-cols-3 gap-4 mb-6">
-          <ScoreCell label="Accuracy"      value={result.score.accuracy} highlight />
-          <ScoreCell label="Pronunciation" value={result.score.pronunciation} />
-          <ScoreCell label="Fluency"       value={result.score.fluency} />
+          <ScoreDisplay label="Accuracy"      value={result.score.accuracy}      size="lg" />
+          <ScoreDisplay label="Pronunciation" value={result.score.pronunciation} size="md" />
+          <ScoreDisplay label="Fluency"       value={result.score.fluency}       size="md" />
         </div>
 
         <div className="pt-5 border-t border-border">
@@ -366,33 +367,5 @@ function ResultSection({
         )}
       </div>
     </section>
-  );
-}
-
-function ScoreCell({
-  label,
-  value,
-  highlight,
-}: {
-  label: string;
-  value: number;
-  highlight?: boolean;
-}) {
-  const tier = getScoreTier(value);
-  const cls = scoreTierClasses[tier];
-  return (
-    <div>
-      <p className="text-xs text-fg-subtle mb-1.5">{label}</p>
-      <p
-        className={cn(
-          "font-display tabular-nums",
-          highlight ? "text-5xl" : "text-3xl",
-          cls.text
-        )}
-      >
-        {Math.round(value)}
-        <span className="text-fg-subtle text-base ml-1">/100</span>
-      </p>
-    </div>
   );
 }

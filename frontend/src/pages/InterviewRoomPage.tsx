@@ -43,6 +43,7 @@ import { useAudioStreamer } from "@/hooks/useAudioStreamer";
 import { useSubmitAnswer } from "@/hooks/queries/useInterviewMutations";
 import { getErrorMessage } from "@/lib/api";
 import { cn, getScoreTier, scoreTierClasses } from "@/lib/utils";
+import { ScoreDisplay } from "@/components/common/ScoreDisplay";
 import type { WsFinalResult } from "@/types/ws";
 import type { InterviewAnswerResponse } from "@/types/interview";
 
@@ -634,12 +635,9 @@ function UserVoiceBubble({
         {/* ── 점수 라인 ───────────────────────────────────── */}
         <div className="px-5 py-3 border-t border-border bg-bg-subtle/40">
           <div className="grid grid-cols-3 gap-3">
-            <ScoreInline label="Accuracy" value={result.score.accuracy} />
-            <ScoreInline
-              label="Pronunciation"
-              value={result.score.pronunciation}
-            />
-            <ScoreInline label="Fluency" value={result.score.fluency} />
+            <ScoreDisplay label="Accuracy" value={result.score.accuracy} size="sm" />
+            <ScoreDisplay label="Pronunciation" value={result.score.pronunciation} size="sm" />
+            <ScoreDisplay label="Fluency" value={result.score.fluency} size="sm" />
           </div>
         </div>
 
@@ -693,31 +691,6 @@ function UserVoiceBubble({
           </div>
         </details>
       </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// 점수 인라인 셀 (Voice Bubble 내부용 컴팩트 버전)
-// YoutubePage의 ScoreCell보다 작고 간결하게
-// ─────────────────────────────────────────────────────────────
-function ScoreInline({ label, value }: { label: string; value: number }) {
-  const tier = getScoreTier(value);
-  const tierCls = scoreTierClasses[tier];
-  return (
-    <div>
-      <p className="font-mono text-[9px] uppercase tracking-wider text-fg-subtle mb-0.5">
-        {label}
-      </p>
-      <p
-        className={cn(
-          "font-display text-xl tabular-nums leading-none",
-          tierCls.text
-        )}
-      >
-        {Math.round(value)}
-        <span className="text-[10px] text-fg-subtle font-mono ml-0.5">/100</span>
-      </p>
     </div>
   );
 }

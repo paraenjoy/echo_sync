@@ -32,6 +32,7 @@ const YoutubePage = lazy(() => import("@/pages/YoutubePage"));
 const InterviewSetupPage = lazy(() => import("@/pages/InterviewSetupPage"));
 const InterviewRoomPage = lazy(() => import("@/pages/InterviewRoomPage"));
 const HistoryPage = lazy(() => import("@/pages/HistoryPage"));
+const HistoryDetailPage = lazy(() => import("@/pages/HistoryDetailPage"));
 
 export default function App() {
   return (
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="/interview/setup" element={<InterviewSetupPage />} />
           <Route path="/interview/room" element={<InterviewRoomPage />} />
           <Route path="/history" element={<HistoryPage />} />
+          <Route path="/history/:id" element={<HistoryDetailPage />} />
         </Route>
 
         {/* fallback */}

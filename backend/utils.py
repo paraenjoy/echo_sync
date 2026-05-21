@@ -37,7 +37,6 @@ def get_transcript_via_whisper(url):
 
     ydl_opts = {
         'format': 'bestaudio/best',
-        'ffmpeg_location': './',
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
