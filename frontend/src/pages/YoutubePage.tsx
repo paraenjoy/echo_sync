@@ -11,7 +11,7 @@
  *  - 두 단계 화면 (intro / practice)을 같은 페이지 안에서 전환
  *  - Editorial 미감: display serif 헤드라인 + 넉넉한 negative space
  */
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -57,7 +57,7 @@ export default function YoutubePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [questions]);
 
-  // ── 핸들러 ───────────────────────────────────────────────────
+  // ── 핸들러 ─────────────────────────────────────────────────
   const handleGenerate = () => {
     if (!url.trim()) return;
     questionsQuery.refetch();
@@ -93,7 +93,7 @@ export default function YoutubePage() {
     audio.reset();
   };
 
-  // ── 단계 1: URL 입력 화면 ────────────────────────────────────
+  // ── 단계 1: URL 입력 화면 ─────────────────────────────────
   if (questions.length === 0) {
     return (
       <main className="min-h-dvh bg-bg text-fg">
@@ -107,7 +107,8 @@ export default function YoutubePage() {
           <h1 className="font-display text-5xl leading-[1.05] mb-4">
             영상 한 편이면,
             <br />
-            <span className="italic text-accent">스피킹 연습</span>이 시작됩니다.
+            <span className="italic text-accent">스피킹 연습</span>이
+            시작됩니다.
           </h1>
 
           <p className="text-fg-muted text-lg leading-relaxed mb-10 max-w-prose">
@@ -132,57 +133,40 @@ export default function YoutubePage() {
               onClick={handleGenerate}
               disabled={!url.trim() || questionsQuery.isFetching}
             >
-              {questionsQuery.isFetching ? (
-                <>
-                  <span className="inline-block h-4 w-4 rounded-full border-2 border-accent-fg/30 border-t-accent-fg animate-spin" />
-                  영상을 분석하고 있어요
-                </>
-              ) : (
-                "질문 만들기"
-              )}
+              {questionsQuery.isFetching ? "질문 만드는 중…" : "질문 생성하기"}
             </Button>
           </div>
 
-          {questionsQuery.isError && (
-            <div className="mt-6 p-4 rounded-md bg-score-low/10 border border-score-low/30 text-sm text-score-low">
-              {getErrorMessage(questionsQuery.error)}
+          {/* 로딩 스켈레톤 */}
+          {questionsQuery.isFetching && (
+            <div className="mt-10">
+              <ProcessingSkeleton />
             </div>
           )}
 
-          {/* Hint */}
-          <p className="mt-8 text-xs text-fg-subtle font-mono">
-            * 영어 자막이 있는 영상에서 가장 좋은 결과가 나옵니다.
-          </p>
+          {/* 에러 메시지 */}
+          {questionsQuery.isError && (
+            <p className="mt-4 text-sm text-score-low">
+              {getErrorMessage(questionsQuery.error)}
+            </p>
+          )}
         </div>
       </main>
     );
   }
 
-  // ── 단계 2: 연습 화면 ────────────────────────────────────────
+  // ── 단계 2: 연습 화면 ─────────────────────────────────────
   return (
     <main className="min-h-dvh bg-bg text-fg">
-      <div className="mx-auto max-w-3xl px-6 py-10">
-        {/* Step Indicator */}
-        <header className="flex items-center justify-between mb-8">
-          <p className="font-mono text-xs uppercase tracking-[0.18em] text-fg-subtle">
-            Question
-            <span className="ml-2 text-fg tabular-nums">
-              {String(currentStep + 1).padStart(2, "0")}
-            </span>
-            <span className="text-fg-subtle"> / {String(totalSteps).padStart(2, "0")}</span>
+      <div className="mx-auto max-w-2xl px-6 pt-20 pb-24">
+        {/* 헤더: 진행 상황 + 새 영상 버튼 */}
+        <header className="mb-10 flex items-center justify-between">
+          <p className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle tabular-nums">
+            질문 {currentStep + 1} / {totalSteps}
           </p>
-
-          {/* 진행률 바 */}
-          <div className="flex-1 mx-6 h-px bg-border relative overflow-hidden">
-            <div
-              className="absolute inset-y-0 left-0 bg-accent transition-all duration-500"
-              style={{ width: `${((currentStep + 1) / totalSteps) * 100}%` }}
-            />
-          </div>
-
           <button
+            type="button"
             onClick={() => {
-              audio.reset();
               const prevUrl = url;
               setUrl("");
               queryClient.removeQueries({
@@ -201,12 +185,16 @@ export default function YoutubePage() {
             {currentQuestion?.question_text}
           </h2>
           {currentQuestion?.question_ko && (
-            <p className="text-fg-muted text-base">{currentQuestion.question_ko}</p>
+            <p className="text-fg-muted text-base">
+              {currentQuestion.question_ko}
+            </p>
           )}
           {currentQuestion?.model_answer && (
             <details className="mt-5 group">
               <summary className="cursor-pointer text-xs font-mono uppercase tracking-wider text-fg-subtle hover:text-accent transition-colors list-none">
-                <span className="inline-block transition-transform group-open:rotate-90 mr-1">▸</span>
+                <span className="inline-block transition-transform group-open:rotate-90 mr-1">
+                  ▸
+                </span>
                 모범 답안 보기
               </summary>
               <p className="mt-3 pl-4 border-l-2 border-accent/40 text-sm text-fg-muted italic">
@@ -264,7 +252,9 @@ export default function YoutubePage() {
   );
 }
 
-/* ─── 결과 섹션 (페이지 내부에 inline으로 두어 한눈에 보이게) ───── */
+// ─────────────────────────────────────────────────────────────
+// 결과 섹션 (페이지 내부에 inline으로 두어 한눈에 보이게)
+// ─────────────────────────────────────────────────────────────
 
 interface ResultSectionProps {
   result: NonNullable<ReturnType<typeof useAudioStreamer>["result"]>;
@@ -281,6 +271,7 @@ function ResultSection({
   onNext,
   onRetry,
 }: ResultSectionProps) {
+  // ResultSection은 BrowserRouter 내부에서 렌더되므로 useNavigate 직접 호출 가능
   const navigate = useNavigate();
 
   const tier = getScoreTier(result.score.accuracy);
@@ -295,17 +286,22 @@ function ResultSection({
         </p>
 
         <div className="grid grid-cols-3 gap-4 mb-6">
-          <ScoreDisplay label="Accuracy"      value={result.score.accuracy}      size="lg" />
+          <ScoreDisplay label="Accuracy" value={result.score.accuracy} size="lg" />
           <ScoreDisplay label="Pronunciation" value={result.score.pronunciation} size="md" />
-          <ScoreDisplay label="Fluency"       value={result.score.fluency}       size="md" />
+          <ScoreDisplay label="Fluency" value={result.score.fluency} size="md" />
         </div>
 
         <div className="pt-5 border-t border-border">
           <p className="font-mono text-xs uppercase tracking-wider text-fg-subtle mb-2">
             You said
           </p>
-          <p className={cn("font-display text-xl leading-relaxed italic", tierCls.text)}>
-            “{result.user_said}”
+          <p
+            className={cn(
+              "font-display text-xl leading-relaxed italic",
+              tierCls.text
+            )}
+          >
+            &ldquo;{result.user_said}&rdquo;
           </p>
         </div>
       </div>
@@ -364,6 +360,7 @@ function ResultSection({
           </Button>
         )}
         {isLast && (
+          // window.location.href 대신 SPA 전환 사용 (캐시 보존 + 빠른 전환)
           <Button variant="primary" onClick={() => navigate("/history")}>
             기록 보러 가기
           </Button>

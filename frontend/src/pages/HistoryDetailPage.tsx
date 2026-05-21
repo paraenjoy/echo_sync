@@ -21,8 +21,7 @@
  */
 import { useMemo } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useHistory } from "@/hooks/queries/useHistory";
-import { pickSessionFromPages } from "@/hooks/queries/useHistory";
+import { useHistory, pickSessionFromPages } from "@/hooks/queries/useHistory";
 import { cn, getScoreTier, scoreTierClasses } from "@/lib/utils";
 import { ScoreDisplay } from "@/components/common/ScoreDisplay";
 import { getErrorMessage } from "@/lib/api";
@@ -91,10 +90,7 @@ export default function HistoryDetailPage() {
     <Shell onBack={() => navigate("/history")}>
       <SessionHeader session={session} />
       <OverallScoreCard logs={session.logs} />
-      <QuestionList
-        questions={session.questions}
-        logs={session.logs}
-      />
+      <QuestionList questions={session.questions} logs={session.logs} />
       <OrphanLogsSection logs={session.logs} />
     </Shell>
   );
@@ -149,7 +145,7 @@ function SessionHeader({ session }: { session: HistorySession }) {
       </p>
       <h1 className="font-display text-4xl leading-[1.1]">{title}</h1>
       {session.source_url && (
-        
+        <a
           href={session.source_url}
           target="_blank"
           rel="noopener noreferrer"
@@ -332,7 +328,7 @@ function AnswerBlock({
               tierCls.text
             )}
           >
-            “{log.recognized_text}”
+            &ldquo;{log.recognized_text}&rdquo;
           </p>
         </div>
       )}
@@ -398,8 +394,23 @@ function OrphanLogsSection({ logs }: { logs: HistoryLog[] }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// 섹션 라벨
+// ─────────────────────────────────────────────────────────────
+function SectionLabel({ eyebrow, title }: { eyebrow: string; title: string }) {
+  return (
+    <div>
+      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-fg-subtle mb-1.5">
+        {eyebrow}
+      </p>
+      <h2 className="font-display text-xl leading-tight">{title}</h2>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // 인라인 오디오 플레이어
-// (InterviewRoomPage의 AudioUnit과 동일 마크업. 3번째 사용처가 등장하면 common/AudioUnit으로 추출 검토)
+// (InterviewRoomPage의 AudioUnit과 동일 마크업.
+//  3번째 사용처가 등장하면 common/AudioUnit으로 추출 검토)
 // ─────────────────────────────────────────────────────────────
 function InlineAudio({ label, src }: { label: string; src: string }) {
   return (
@@ -408,26 +419,6 @@ function InlineAudio({ label, src }: { label: string; src: string }) {
         {label}
       </p>
       <audio controls src={src} className="w-full h-9" preload="none" />
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// 섹션 라벨
-// ─────────────────────────────────────────────────────────────
-function SectionLabel({
-  eyebrow,
-  title,
-}: {
-  eyebrow: string;
-  title: string;
-}) {
-  return (
-    <div>
-      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-fg-subtle mb-1.5">
-        {eyebrow}
-      </p>
-      <h2 className="font-display text-xl leading-tight">{title}</h2>
     </div>
   );
 }
@@ -443,7 +434,8 @@ function NotFound({ onBack }: { onBack: () => void }) {
           Not Found
         </p>
         <h2 className="font-display text-2xl leading-tight mb-3">
-          이 세션을 <span className="italic text-accent">찾을 수 없어요</span>
+          이 세션을{" "}
+          <span className="italic text-accent">찾을 수 없어요</span>
         </h2>
         <p className="text-fg-muted text-sm leading-relaxed mb-6 max-w-md mx-auto">
           삭제되었거나, 잘못된 링크일 수 있어요. 히스토리에서 다시

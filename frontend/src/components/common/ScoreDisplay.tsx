@@ -33,16 +33,13 @@ interface ScoreDisplayProps {
 
 // ─────────────────────────────────────────────────────────────
 // 사이즈별 스타일 토큰
-// 한 곳에서 관리되어 신규 사이즈 추가나 톤 보정이 쉬워진다.
+// 타입 별칭을 먼저 선언해 Record 제네릭을 한 줄로 유지한다.
+// (멀티라인 Record<\n  ScoreDisplaySize,\n  {...}\n>는 .tsx 파서가
+//  JSX로 오인할 수 있어 에러가 발생하므로 이 패턴을 사용한다.)
 // ─────────────────────────────────────────────────────────────
-const SIZE_TOKENS: Record
-  ScoreDisplaySize,
-  {
-    label: string;
-    value: string;
-    unit: string;
-  }
-> = {
+type TokenSet = { label: string; value: string; unit: string };
+
+const SIZE_TOKENS: Record<ScoreDisplaySize, TokenSet> = {
   sm: {
     label: "text-[9px] mb-0.5",
     value: "text-xl",
@@ -88,9 +85,7 @@ export function ScoreDisplay({
         )}
       >
         {Math.round(value)}
-        <span
-          className={cn("font-mono text-fg-subtle", tokens.unit)}
-        >
+        <span className={cn("font-mono text-fg-subtle", tokens.unit)}>
           /100
         </span>
       </p>
