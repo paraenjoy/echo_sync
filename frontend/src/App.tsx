@@ -9,7 +9,14 @@
  *      /interview/setup     Interview Setup
  *      /interview/room      Interview Room
  *      /history             Session History
+ *      /history/:id         History Detail
  *  - catch-all:  → /  (간단한 fallback, 별도 404 페이지는 생략)
+ *
+ * 전역 UI (Routes와 같은 레벨):
+ *  - ThemeToggle을 fixed 배치 → 모든 라우트(/auth 포함)에서 동일한 위치에 노출.
+ *    페이지 컴포넌트 어디에도 토글 코드가 들어가지 않는다.
+ *  - useThemeSync: 멀티 탭 동기화. App 트리에서 단 한 번 호출 (StrictMode의
+ *    dev-time 이중 호출은 useEffect cleanup으로 안전).
  *
  * 코드 스플리팅:
  *  - AuthPage는 eager: 비로그인 진입 시 첫 화면이라 즉시 로드
@@ -21,6 +28,8 @@
 import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { ProtectedRoute } from "@/components/common/ProtectedRoute";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { useThemeSync } from "@/hooks/useThemeSync";
 
 // ── 공개 라우트 (eager) ────────────────────────────────────
 import AuthPage from "@/pages/AuthPage";
@@ -35,8 +44,24 @@ const HistoryPage = lazy(() => import("@/pages/HistoryPage"));
 const HistoryDetailPage = lazy(() => import("@/pages/HistoryDetailPage"));
 
 export default function App() {
+  // 멀티 탭 동기화 — 다른 탭에서 테마가 토글되면 이 탭도 따라간다.
+  // 어차피 단 하나의 App 인스턴스에서만 호출되므로 전역 effect로 안전.
+  useThemeSync();
+
   return (
     <Suspense fallback={<RouteFallback />}>
+      {/*
+        모든 페이지 위에 떠 있는 테마 토글.
+        - Routes 바깥에 두어 라우트 전환 시에도 사라지지 않음
+        - /auth(비로그인)에서도 동일하게 노출됨 (ProtectedRoute 영향 받지 않음)
+        - z-50으로 일반 컨텐츠 위, 모달(z-50과 같지만 모달 진입 시 backdrop이
+          위를 덮으므로 시각적으로 가려짐) 아래 정도의 우선순위 유지
+      */}
+      <ThemeToggle
+      className="fixed top-4 right-4 z-50 shadow-sm"
+      style={{ top: "max(1rem, env(safe-area-inset-top))" }}
+      />
+
       <Routes>
         {/* 공개 */}
         <Route path="/auth" element={<AuthPage />} />

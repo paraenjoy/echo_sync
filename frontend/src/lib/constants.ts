@@ -14,8 +14,12 @@ const apiUrl = new URL(API_BASE_URL);
 const wsProtocol = apiUrl.protocol === "https:" ? "wss:" : "ws:";
 export const WS_BASE_URL = `${wsProtocol}//${apiUrl.host}`;
 
-// 로컬스토리지 키 (Zustand persist용)
+// ─── 로컬스토리지 키 (Zustand persist용) ──────────────────────
+// 기존 인증용 키와 동일한 "sync-xxx-storage" 네이밍 컨벤션을 따른다.
+// FOUC 방지용 inline 스크립트(index.html)도 이 키를 직접 참조하므로
+// 값을 바꾸면 반드시 index.html도 함께 수정해야 한다.
 export const AUTH_STORAGE_KEY = "sync-auth-storage";
+export const THEME_STORAGE_KEY = "sync-theme-storage";
 
 // 오디오 스트리밍 설정 (백엔드 Azure SDK 요구사항과 일치)
 export const AUDIO_CONFIG = {
