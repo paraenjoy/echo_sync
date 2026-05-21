@@ -18,7 +18,7 @@ def extract_text_from_pdf(file_path):
 
 
 print("⏳ Whisper 모델을 로드 중입니다... (최초 실행 시 시간이 소요될 수 있음)")
-model = whisper.load_model("base")
+model = whisper.load_model("tiny")
 
 
 def extract_video_id(url):

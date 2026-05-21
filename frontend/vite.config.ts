@@ -13,8 +13,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       // Step 6에서 상세화 예정
       manifest: {
-        name: "sync. — AI Speaking Tutor",
-        short_name: "sync.",
+        name: "EchoSync",
+        short_name: "EchoSync",
         theme_color: "#0F0E0C",
         background_color: "#0F0E0C",
         display: "standalone",

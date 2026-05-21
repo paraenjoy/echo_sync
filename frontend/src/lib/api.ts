@@ -23,7 +23,7 @@ interface FastApiError {
 
 export const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 60_000, // YouTube 분석/면접 LLM 호출이 길어질 수 있어 60초로 설정
+  timeout: 300_000, // 60_000(60초)에서 300_000(5분)으로 변경
   headers: {
     "Content-Type": "application/json",
   },

@@ -120,7 +120,7 @@ export default function InterviewSetupPage() {
         <h1 className="font-display text-5xl leading-[1.05] mb-4">
           오늘은 어떤,
           <br />
-          <span className="italic text-accent">면접</span>을 준비할까요?
+          <span className="text-accent">면접</span>을 준비할까요?
         </h1>
 
         <p className="text-fg-muted text-lg leading-relaxed mb-12 max-w-prose">

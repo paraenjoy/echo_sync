@@ -7,15 +7,6 @@
  *      · 데이터 부족: summary 빈 상태 + 첫 연습 CTA
  *  - 사용자 환영 헤더 (닉네임)
  *  - 주요 기능으로의 빠른 진입 카드 (YouTube / Interview / History)
- *
- * 상태 분리:
- *  - 닉네임은 useAuthStore에서 (클라이언트 상태)
- *  - 누적 분석은 useCumulativeAnalysis에서 (서버 상태)
- *
- * 디자인:
- *  - YoutubePage / AuthPage와 같은 Editorial Warmth 톤
- *  - max-w-3xl centered
- *  - 핵심 단어 italic + accent 강조
  */
 import { Link } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
@@ -28,7 +19,6 @@ export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
   const analysisQuery = useCumulativeAnalysis(user?.id ?? null);
 
-  // 닉네임 폴백: nickname → email의 @ 앞부분 → "당신"
   const displayName =
     user?.nickname?.trim() ||
     user?.email?.split("@")[0] ||
@@ -44,7 +34,7 @@ export default function DashboardPage() {
           </p>
           <h1 className="font-display text-5xl leading-[1.05] mb-5">
             {displayName}님, 다시 만나서{" "}
-            <span className="italic text-accent">반가워요</span>
+            <span className="text-accent">반가워요</span>
           </h1>
           <p className="text-fg-muted text-lg leading-relaxed">
             지금까지의 발음 데이터를 정리해두었어요. 약점부터 차근차근
@@ -105,14 +95,13 @@ export default function DashboardPage() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 누적 분석 본문 — 두 응답 형태(정상 vs 데이터 부족) 분기
+// 누적 분석 본문
 // ─────────────────────────────────────────────────────────────
 function AnalysisContent({
   data,
 }: {
   data: import("@/types/history").CumulativeAnalysisResponse;
 }) {
-  // 데이터 부족 케이스: 백엔드가 summary만 내려보냄
   const isInsufficient =
     !data.weak_phonemes || data.weak_phonemes.length === 0;
 
@@ -123,7 +112,7 @@ function AnalysisContent({
           Not enough data yet
         </p>
         <h3 className="font-display text-2xl leading-tight mb-3">
-          첫 연습을 마치면 <span className="italic text-accent">여기</span>에
+          첫 연습을 마치면 <span className="text-accent">여기</span>에
           분석이 쌓여요
         </h3>
         <p className="text-fg-muted text-sm leading-relaxed mb-6 max-w-md mx-auto">
@@ -170,7 +159,7 @@ function AnalysisContent({
 }
 
 // ─────────────────────────────────────────────────────────────
-// 섹션 헤더 (eyebrow + 제목) — 본 페이지 내부 반복 사용
+// 섹션 헤더
 // ─────────────────────────────────────────────────────────────
 function SectionHeader({
   eyebrow,
@@ -225,20 +214,10 @@ function QuickLink({ to, eyebrow, title, description, icon }: QuickLinkProps) {
   );
 }
 
-/* ─── 아이콘 (의존성 없이 인라인 SVG, MicButton 패턴과 동일) ─── */
-
+/* ─── 아이콘 ─── */
 function IconYoutube() {
   return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
       <rect x="2.5" y="5" width="19" height="14" rx="3" />
       <polygon points="10,9 16,12 10,15" fill="currentColor" stroke="none" />
     </svg>
@@ -247,16 +226,7 @@ function IconYoutube() {
 
 function IconInterview() {
   return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 12c0 4.4-4 8-9 8-1.3 0-2.5-.2-3.6-.6L4 21l1.4-3.7C4.5 16 4 14.6 4 13c0-4.4 4-8 9-8s8 3.6 8 7z" />
     </svg>
   );
@@ -264,16 +234,7 @@ function IconInterview() {
 
 function IconHistory() {
   return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 12a9 9 0 1 0 3-6.7" />
       <polyline points="3 4 3 9 8 9" />
       <polyline points="12 7 12 12 15.5 14" />

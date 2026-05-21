@@ -267,7 +267,7 @@ function QuestionList({
                     </span>
                     모범 답안 보기
                   </summary>
-                  <p className="mt-3 pl-4 border-l-2 border-accent/40 text-sm text-fg-muted italic leading-relaxed">
+                  <p className="mt-3 pl-4 border-l-2 border-accent/40 text-sm text-fg-muted leading-relaxed">
                     {q.model_answer}
                   </p>
                 </details>
@@ -324,7 +324,7 @@ function AnswerBlock({
           </p>
           <p
             className={cn(
-              "font-display text-lg leading-relaxed italic",
+              "font-display text-lg leading-relaxed",
               tierCls.text
             )}
           >
@@ -435,7 +435,7 @@ function NotFound({ onBack }: { onBack: () => void }) {
         </p>
         <h2 className="font-display text-2xl leading-tight mb-3">
           이 세션을{" "}
-          <span className="italic text-accent">찾을 수 없어요</span>
+          <span className="text-accent">찾을 수 없어요</span>
         </h2>
         <p className="text-fg-muted text-sm leading-relaxed mb-6 max-w-md mx-auto">
           삭제되었거나, 잘못된 링크일 수 있어요. 히스토리에서 다시

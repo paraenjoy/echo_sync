@@ -107,7 +107,7 @@ export default function YoutubePage() {
           <h1 className="font-display text-5xl leading-[1.05] mb-4">
             영상 한 편이면,
             <br />
-            <span className="italic text-accent">스피킹 연습</span>이
+            <span className="text-accent">스피킹 연습</span>이
             시작됩니다.
           </h1>
 
@@ -197,7 +197,7 @@ export default function YoutubePage() {
                 </span>
                 모범 답안 보기
               </summary>
-              <p className="mt-3 pl-4 border-l-2 border-accent/40 text-sm text-fg-muted italic">
+              <p className="mt-3 pl-4 border-l-2 border-accent/40 text-sm text-fg-muted">
                 {currentQuestion.model_answer}
               </p>
             </details>
@@ -297,7 +297,7 @@ function ResultSection({
           </p>
           <p
             className={cn(
-              "font-display text-xl leading-relaxed italic",
+              "font-display text-xl leading-relaxed",
               tierCls.text
             )}
           >

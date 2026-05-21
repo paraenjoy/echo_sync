@@ -1,7 +1,6 @@
 /* ─────────────────────────────────────────────────────────────
-   sync. 디자인 토큰
-   - Editorial warmth: refined minimalism + warm precision
-   - 다크 베이스 (기본값) + 라이트 토글 (data-theme="light")
+   EchoSync 디자인 토큰
+   - Cool Dark + Blue Accent 팔레트
    ───────────────────────────────────────────────────────────── */
 
 @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&display=swap");
@@ -13,29 +12,27 @@
 
 @layer base {
   /* ─────────────────────────────────────────────────────────
-     기본값 = 다크 모드
-     - data-theme 속성이 없거나 "dark"일 때 사용됨
-     - FOUC 방지 스크립트가 적용 전 깜빡임 방지를 위해 이 값을 즉시 표시
+     기본값 = 다크 모드 (Cool Dark)
      ───────────────────────────────────────────────────────── */
   :root {
-    /* ── 따뜻한 다크 베이스 (순수 #000 회피) ─────────────────── */
-    --bg:           15 14 12;       /* #0F0E0C  warm near-black */
-    --bg-elevated:  26 24 21;       /* #1A1815  카드 표면 */
-    --bg-subtle:    37 34 30;       /* #25221E  hover/secondary */
+    /* ── Cool Dark 베이스 ─────────────────────────────────── */
+    --bg:           10 12 18;       /* #0A0C12  cool near-black */
+    --bg-elevated:  18 22 34;       /* #121622  카드 표면 */
+    --bg-subtle:    27 33 50;       /* #1B2132  hover/secondary */
 
-    --fg:           250 247 242;    /* #FAF7F2  warm off-white */
-    --fg-muted:     168 162 152;    /* #A8A298  보조 텍스트 */
-    --fg-subtle:    115 110 102;    /* #736E66  메타 정보 */
+    --fg:           236 240 250;    /* #ECF0FA  cool off-white */
+    --fg-muted:     148 158 185;    /* #949EB9  보조 텍스트 */
+    --fg-subtle:    90 100 128;     /* #5A6480  메타 정보 */
 
-    --border:       46 42 38;       /* #2E2A26  표면 구분선 */
-    --border-strong: 71 65 58;      /* #47413A  강조 구분선 */
+    --border:       35 43 66;       /* #232B42  표면 구분선 */
+    --border-strong: 55 68 102;     /* #374466  강조 구분선 */
 
-    /* ── Accent: Amber warmth ─────────────────────────────── */
-    --accent:       232 165 71;     /* #E8A547  primary accent */
-    --accent-fg:    15 14 12;       /* accent 위 텍스트 */
-    --accent-hover: 217 149 56;     /* #D99538 */
+    /* ── Accent: Blue ────────────────────────────────────── */
+    --accent:       99 149 230;     /* #6395E6  primary accent */
+    --accent-fg:    10 12 18;       /* accent 위 텍스트 */
+    --accent-hover: 74 125 211;     /* #4A7DD3 */
 
-    /* ── Score 그라데이션 (음소 히트맵 / 점수 카드) ─────────── */
+    /* ── Score 그라데이션 ─────────────────────────────────── */
     --score-low:    220 38 38;      /* #DC2626  <60 */
     --score-mid:    245 158 11;     /* #F59E0B  60-89 */
     --score-high:   16 185 129;     /* #10B981  ≥90 */
@@ -49,44 +46,33 @@
     --ease-out-quad: cubic-bezier(0.25, 0.46, 0.45, 0.94);
     --ease-spring:   cubic-bezier(0.34, 1.56, 0.64, 1);
 
-    /* ── 브라우저 UI(스크롤바, autofill 등) 힌트 ──────────────
-       다크 모드 기본값 — color-scheme이 스크롤바와 시스템 UI 톤을 결정 */
     color-scheme: dark;
   }
 
   /* ─────────────────────────────────────────────────────────
      라이트 모드 — :root[data-theme="light"]
-     - 다크의 "따뜻한 정밀함"을 유지하기 위해 순백(#FFF) 대신
-       warm cream(#FAF7F2)을 베이스로 사용 (다크의 fg와 같은 톤)
-     - 텍스트는 다크의 bg와 같은 warm dark로 대칭
-     - accent는 동일한 amber이지만, 밝은 배경 위 대비 확보를 위해
-       살짝 어두운 시안(#C6842F)으로 보정 (WCAG AA 텍스트 기준 통과)
-     - score(R/Y/G)는 라이트 배경 대비 보정값 사용
      ───────────────────────────────────────────────────────── */
   :root[data-theme="light"] {
-    /* ── 따뜻한 라이트 베이스 (순백 #FFF 회피) ──────────────── */
-    --bg:           250 247 242;    /* #FAF7F2  warm cream */
-    --bg-elevated:  255 252 246;    /* #FFFCF6  카드 표면 (살짝 더 밝게) */
-    --bg-subtle:    240 235 226;    /* #F0EBE2  hover/secondary */
+    /* ── Cool Light 베이스 ──────────────────────────────────── */
+    --bg:           245 247 252;    /* #F5F7FC  cool light */
+    --bg-elevated:  255 255 255;    /* #FFFFFF  카드 표면 */
+    --bg-subtle:    230 234 245;    /* #E6EAF5  hover/secondary */
 
-    --fg:           26 24 21;       /* #1A1815  warm near-black (다크의 bg-elevated와 동일 톤) */
-    --fg-muted:     86 78 67;       /* #564E43  보조 텍스트 */
-    --fg-subtle:    138 128 113;    /* #8A8071  메타 정보 */
+    --fg:           18 22 42;       /* #12162A  cool near-black */
+    --fg-muted:     72 84 120;      /* #485478  보조 텍스트 */
+    --fg-subtle:    120 134 172;    /* #7886AC  메타 정보 */
 
-    --border:       224 217 205;    /* #E0D9CD  표면 구분선 */
-    --border-strong: 196 186 170;   /* #C4BAAA  강조 구분선 */
+    --border:       210 218 238;    /* #D2DAEE  표면 구분선 */
+    --border-strong: 175 188 220;   /* #AFBCDC  강조 구분선 */
 
-    /* Accent: 같은 amber 계열이지만 라이트 배경 대비를 위해
-       살짝 어둡게 보정. 다크의 accent-hover와 거의 같은 값을
-       primary로 사용하고, hover는 더 어두운 톤으로. */
-    --accent:       198 132 47;     /* #C6842F  light용 amber */
-    --accent-fg:    250 247 242;    /* accent 위 텍스트(밝은 cream) */
-    --accent-hover: 169 110 32;     /* #A96E20 */
+    /* Accent: 라이트 배경 대비 보정 blue */
+    --accent:       59 110 196;     /* #3B6EC4  (WCAG AA 통과) */
+    --accent-fg:    245 247 252;    /* accent 위 텍스트 */
+    --accent-hover: 42 86 165;      /* #2A56A5 */
 
-    /* Score: 라이트 배경에서도 시인성을 유지하도록 살짝 진하게 */
-    --score-low:    185 28 28;      /* #B91C1C  진한 red */
-    --score-mid:    217 119 6;      /* #D97706  진한 amber (mid) */
-    --score-high:   4 120 87;       /* #047857  진한 green */
+    --score-low:    185 28 28;      /* #B91C1C */
+    --score-mid:    217 119 6;      /* #D97706 */
+    --score-high:   4 120 87;       /* #047857 */
 
     color-scheme: light;
   }
@@ -102,7 +88,6 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
 
-    /* 테마 전환 시 컬러가 부드럽게 보간되도록 — 너무 길면 어색하니 짧게 */
     transition:
       background-color 200ms var(--ease-out-quad),
       color 200ms var(--ease-out-quad);
@@ -112,13 +97,14 @@
     font-family: var(--font-display);
     font-feature-settings: "ss01";
     letter-spacing: -0.02em;
+    /* italic 제거 — 기울어진 폰트 전역 차단 */
+    font-style: normal;
   }
 
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }
 
-  /* autofill 배경색 제거 — 토큰을 그대로 참조하므로 라이트 모드도 자동 대응 */
   input:-webkit-autofill {
     -webkit-box-shadow: 0 0 0 1000px rgb(var(--bg-elevated)) inset;
     -webkit-text-fill-color: rgb(var(--fg));
@@ -153,8 +139,6 @@
     animation: mic-pulse 2s var(--ease-out-quad) infinite;
   }
 
-  /* shimmer는 토큰 기반이라 라이트 모드에서도 자동으로 작동
-     (bg-elevated, bg-subtle이 라이트 톤으로 재정의되어 있으므로) */
   @keyframes shimmer {
     0%   { background-position: -200% 0; }
     100% { background-position: 200% 0; }

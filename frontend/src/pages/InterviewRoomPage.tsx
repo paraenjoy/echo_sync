@@ -344,7 +344,7 @@ export default function InterviewRoomPage() {
             <h1 className="font-display text-lg truncate leading-tight">
               <span className="text-fg">{state.position}</span>
               <span className="text-fg-subtle mx-2">·</span>
-              <span className="italic text-accent">{modeLabel}</span>
+              <span className="text-accent">{modeLabel}</span>
             </h1>
           </div>
           <button
@@ -624,7 +624,7 @@ function UserVoiceBubble({
         <div className="px-5 py-4">
           <p
             className={cn(
-              "font-display text-base leading-relaxed italic",
+              "font-display text-base leading-relaxed",
               tierCls.text
             )}
           >

@@ -82,7 +82,7 @@ export default function HistoryPage() {
               History
             </p>
             <h1 className="font-display text-5xl leading-[1.05] mb-4">
-              지금까지의 <span className="italic text-accent">연습들</span>
+              지금까지의 <span className="text-accent">연습들</span>
             </h1>
             <p className="text-fg-muted text-lg leading-relaxed">
               과거 세션을 다시 열어보고, 점수 변화를 확인해보세요.
@@ -199,7 +199,7 @@ function EmptyState() {
         Empty
       </p>
       <h3 className="font-display text-2xl leading-tight mb-3">
-        아직 <span className="italic text-accent">기록</span>이 없어요
+        아직 <span className="text-accent">기록</span>이 없어요
       </h3>
       <p className="text-fg-muted text-sm leading-relaxed mb-7 max-w-md mx-auto">
         첫 연습을 마치면 이곳에 세션이 차곡차곡 쌓여요. 영상으로 시작해볼까요?

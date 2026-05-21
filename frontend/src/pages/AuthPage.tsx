@@ -115,15 +115,16 @@ export default function AuthPage() {
     }
   };
 
-  // ── 카피 라이팅 (모드별) ────────────────────────────────────
+  // ── 카피라이팅 (모드별) ─────────────────────────────────────
+  // italic 제거 — 기울어진 폰트 사용 안 함, text-accent로만 강조
   const heading =
     mode === "login" ? (
       <>
-        다시 만나서 <span className="italic text-accent">반가워요</span>
+        AI 스피킹 튜터 <span className="text-accent">EchoSync</span>
       </>
     ) : (
       <>
-        오늘부터 <span className="italic text-accent">함께해요</span>
+        오늘부터 <span className="text-accent">함께해요</span>
       </>
     );
 
@@ -144,10 +145,8 @@ export default function AuthPage() {
     <main className="min-h-dvh bg-bg text-fg grid place-items-center px-6 py-12">
       <div className="w-full max-w-md">
         {/* ── 헤더 ──────────────────────────────────────────── */}
+        {/* eyebrow "Sync" 제거 */}
         <div className="text-center mb-10">
-          <p className="font-mono text-xs uppercase tracking-[0.18em] text-fg-subtle mb-3">
-            Sync
-          </p>
           <h1 className="font-display text-4xl leading-[1.1] mb-3">
             {heading}
           </h1>
@@ -265,10 +264,6 @@ export default function AuthPage() {
 
 // ─────────────────────────────────────────────────────────────
 // Field — 라벨 + 힌트 + 에러 + 슬롯
-//
-// Setup의 FormField와 비슷하지만 차이점:
-//  - error 필드 지원 (인라인 검증 메시지)
-//  - 라벨에 *(required) 표시 없음 (모든 필드가 require여서 시각적 노이즈 됨)
 // ─────────────────────────────────────────────────────────────
 function Field({
   label,
@@ -300,9 +295,6 @@ function Field({
 
 // ─────────────────────────────────────────────────────────────
 // AuthModeToggle — 로그인 / 회원가입 segmented control
-// (InterviewRoom의 ModeToggle과 동일 패턴이지만, 외부 사용 컨텍스트가 달라
-//  공용 UI 컴포넌트로 추출하지 않고 페이지 내부에 두었다.
-//  세 곳 이상에서 동일 패턴이 반복되면 그때 components/ui로 추출 검토.)
 // ─────────────────────────────────────────────────────────────
 function AuthModeToggle({
   mode,
