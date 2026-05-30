@@ -7,7 +7,7 @@ import wave
 from typing import List, Optional, cast, Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, File, UploadFile, Form, HTTPException, Depends
+from fastapi import FastAPI, WebSocket, File, UploadFile, Form, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -555,6 +555,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
         push_stream.close()
 
+        # ── WS 처리 단계 status 메시지 (BACKEND_PR.md TODO #4, 옵션 B) ──
+        await websocket.send_text(json.dumps(
+            {"type": "status", "stage": "asr"}, ensure_ascii=False
+        ))
+
         result = recognizer.recognize_once_async().get()
         result = cast(Any, result)
 
@@ -564,7 +569,16 @@ async def websocket_endpoint(websocket: WebSocket):
             }, ensure_ascii=False))
             return
 
+        await websocket.send_text(json.dumps(
+            {"type": "status", "stage": "scoring"}, ensure_ascii=False
+        ))
+
         final_data = process_pronunciation_result(result)
+
+        await websocket.send_text(json.dumps(
+            {"type": "status", "stage": "coaching"}, ensure_ascii=False
+        ))
+
         feedback = await get_ai_coaching(final_data, current_question)
 
         user_tts = await generate_native_audio(
@@ -676,6 +690,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 next_question = next_q.question_text
 
         await websocket.send_text(json.dumps({
+            "type": "final",
             "user_said": result.text,
             "score": final_data["sentence"],
             "words": final_data["words"],
@@ -1036,102 +1051,156 @@ async def finalize_interview(
     }
 
 
+def _build_session_dict(s, session):
+    """세션 하나를 응답 dict로 변환하는 공용 헬퍼.
+    GET /history 와 GET /history/{session_id} 양쪽에서 사용."""
+    questions = session.exec(
+        select(Question).where(Question.session_id == cast(int, s.id))
+    ).all()
+    questions = sorted(questions, key=lambda item: item.order_no)
+
+    logs = session.exec(
+        select(SpeakingLog).where(SpeakingLog.session_id == cast(int, s.id))
+    ).all()
+    logs = sorted(logs, key=lambda item: item.created_at)
+
+    # word_logs 일괄 조회 — N+1 방지 (BACKEND_PR.md TODO #3)
+    log_ids = [cast(int, log.id) for log in logs]
+    word_logs_all = []
+    if log_ids:
+        word_logs_all = session.exec(
+            select(WordLog).where(WordLog.speaking_log_id.in_(log_ids))  # type: ignore
+        ).all()
+
+    word_logs_map: dict[int, list] = {}
+    for wl in word_logs_all:
+        word_logs_map.setdefault(wl.speaking_log_id, []).append(wl)
+
+    report = session.exec(
+        select(InterviewReport).where(InterviewReport.session_id == cast(int, s.id))
+    ).first()
+
+    report_data = None
+    if report:
+        try:
+            tech_stack_percent = json.loads(report.tech_stack_percent_json or "{}")
+        except Exception:
+            tech_stack_percent = {}
+
+        report_data = {
+            "report_id": report.id,
+            "animal_name": report.animal_name,
+            "animal_reason": report.animal_reason,
+            "animal_image_url": report.animal_image_url,
+            "content_improvement": report.content_improvement,
+            "tech_stack_percent": tech_stack_percent,
+            "overall_score": report.overall_score,
+            "pronunciation_avg": report.pronunciation_avg,
+            "accuracy_avg": report.accuracy_avg,
+            "fluency_avg": report.fluency_avg,
+            "content_score": report.content_score,
+            "technical_score": report.technical_score,
+            "confidence_score": report.confidence_score,
+            "score_json": report.score_json,
+            "created_at": str(report.created_at),
+        }
+
+    return {
+        "session_id": s.id,
+        "session_type": s.session_type,
+        "title": s.title,
+        "source_url": s.source_url,
+        "created_at": str(s.created_at),
+        "questions": [
+            {
+                "question_id": q.id,
+                "order_no": q.order_no,
+                "question_type": q.question_type,
+                "question_text": q.question_text,
+                "question_ko": q.question_ko,
+                "model_answer": q.model_answer,
+            }
+            for q in questions
+        ],
+        "logs": [
+            {
+                "log_id": log.id,
+                "question_id": log.question_id,
+                "reference_text": log.reference_text,
+                "recognized_text": log.recognized_text,
+                "accuracy_score": log.accuracy_score,
+                "pronunciation_score": log.pronunciation_score,
+                "fluency_score": log.fluency_score,
+                "coaching_message": log.coaching_message,
+                "audio_url": log.audio_url,
+                "user_tts_url": log.user_tts_url,
+                "model_tts_url": log.model_tts_url,
+                "created_at": str(log.created_at),
+                # WsWord 스키마와 동일한 형태 (BACKEND_PR.md TODO #3)
+                "word_logs": [
+                    {
+                        "word": wl.word,
+                        "accuracy": wl.accuracy_score,
+                        "error_type": wl.error_type,
+                        "phonemes": json.loads(wl.phoneme_data)
+                            if wl.phoneme_data else [],
+                    }
+                    for wl in word_logs_map.get(cast(int, log.id), [])
+                ],
+            }
+            for log in logs
+        ],
+        "interview_report": report_data,
+    }
+
+
 @app.get("/history")
 def get_history(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
+    limit: int = Query(default=20, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
 ):
-    sessions = session.exec(
-        select(StudySession).where(
-            StudySession.user_id == cast(int, current_user.id)
-        )
+    user_id = cast(int, current_user.id)
+
+    # 전체 세션 수 — has_more 판정용 (BACKEND_PR.md TODO #1)
+    all_sessions = session.exec(
+        select(StudySession).where(StudySession.user_id == user_id)
     ).all()
+    total = len(all_sessions)
 
-    sessions = sorted(sessions, key=lambda item: item.created_at, reverse=True)
+    # created_at DESC 정렬 후 limit/offset 적용
+    all_sessions = sorted(all_sessions, key=lambda item: item.created_at, reverse=True)
+    paged_sessions = all_sessions[offset : offset + limit]
 
-    result = []
+    result = [_build_session_dict(s, session) for s in paged_sessions]
 
-    for s in sessions:
-        questions = session.exec(
-            select(Question).where(Question.session_id == cast(int, s.id))
-        ).all()
+    return {
+        "history": result,
+        "total": total,
+        "has_more": (offset + limit) < total,
+    }
 
-        questions = sorted(questions, key=lambda item: item.order_no)
 
-        logs = session.exec(
-            select(SpeakingLog).where(SpeakingLog.session_id == cast(int, s.id))
-        ).all()
+@app.get("/history/{session_id}")
+def get_history_session(
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """단일 세션 조회 (BACKEND_PR.md TODO #2)"""
+    s = session.exec(
+        select(StudySession).where(StudySession.id == session_id)
+    ).first()
 
-        logs = sorted(logs, key=lambda item: item.created_at)
+    if not s:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
 
-        report = session.exec(
-            select(InterviewReport).where(InterviewReport.session_id == cast(int, s.id))
-        ).first()
+    # 본인 소유 검증
+    if s.user_id != cast(int, current_user.id):
+        raise HTTPException(status_code=403, detail="접근 권한이 없습니다.")
 
-        report_data = None
-
-        if report:
-            try:
-                tech_stack_percent = json.loads(report.tech_stack_percent_json or "{}")
-            except Exception:
-                tech_stack_percent = {}
-
-            report_data = {
-                "report_id": report.id,
-                "animal_name": report.animal_name,
-                "animal_reason": report.animal_reason,
-                "animal_image_url": report.animal_image_url,
-                "content_improvement": report.content_improvement,
-                "tech_stack_percent": tech_stack_percent,
-                "overall_score": report.overall_score,
-                "pronunciation_avg": report.pronunciation_avg,
-                "accuracy_avg": report.accuracy_avg,
-                "fluency_avg": report.fluency_avg,
-                "content_score": report.content_score,
-                "technical_score": report.technical_score,
-                "confidence_score": report.confidence_score,
-                "score_json": report.score_json,
-                "created_at": str(report.created_at),
-            }
-
-        result.append({
-            "session_id": s.id,
-            "session_type": s.session_type,
-            "title": s.title,
-            "source_url": s.source_url,
-            "created_at": str(s.created_at),
-            "questions": [
-                {
-                    "question_id": q.id,
-                    "order_no": q.order_no,
-                    "question_type": q.question_type,
-                    "question_text": q.question_text,
-                    "question_ko": q.question_ko,
-                    "model_answer": q.model_answer,
-                }
-                for q in questions
-            ],
-            "logs": [
-                {
-                    "log_id": log.id,
-                    "question_id": log.question_id,
-                    "reference_text": log.reference_text,
-                    "recognized_text": log.recognized_text,
-                    "accuracy_score": log.accuracy_score,
-                    "pronunciation_score": log.pronunciation_score,
-                    "fluency_score": log.fluency_score,
-                    "coaching_message": log.coaching_message,
-                    "audio_url": log.audio_url,
-                    "user_tts_url": log.user_tts_url,
-                    "model_tts_url": log.model_tts_url,
-                    "created_at": str(log.created_at),
-                }
-                for log in logs
-            ],
-            "interview_report": report_data,
-        })
-
-    return {"history": result}
+    return _build_session_dict(s, session)
 
 
 @app.get("/progress")
