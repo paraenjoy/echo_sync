@@ -16,6 +16,7 @@ from sqlmodel import Session, select
 
 import azure.cognitiveservices.speech as speechsdk
 import google.generativeai as genai
+import urllib.parse
 
 try:
     from openai import AsyncOpenAI
@@ -285,27 +286,13 @@ def calculate_tech_stack_percent(full_transcript: str, metadata_json: Optional[s
 
 
 async def generate_persona_image(animal_generation_prompt: str):
-    if not openai_client:
-        return "https://via.placeholder.com/400x400?text=AI+Image+Pending"
-
     try:
-        image_generation_response = await openai_client.images.generate(
-            model="dall-e-3",
-            prompt=f"""
-            A detailed square profile picture of {animal_generation_prompt}
-            wearing a cozy hoodie and holding a coffee mug,
-            focused on a laptop screen displaying code.
-            Anthropomorphic animal developer style.
-            Modern tech startup office background.
-            Cute but professional expression.
-            High quality digital art.
-            """,
-            n=1,
-            size="1024x1024",
-            quality="hd",
-        )
-
-        return image_generation_response.data[0].url
+        prompt = f"A detailed square profile picture of {animal_generation_prompt}. Anthropomorphic animal developer style. High quality digital art."
+        
+        encoded_prompt = urllib.parse.quote(prompt)
+        image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true"
+        
+        return image_url
 
     except Exception as img_err:
         print(f"AI 이미지 생성 실패: {img_err}")
@@ -926,8 +913,9 @@ async def finalize_interview(
     2. Combine it with a professional adjective in Korean.
        Example: "치밀한 고양이", "날카로운 독수리", "성실한 비버".
     3. Provide a detailed reason in Korean explaining why this animal fits the candidate.
-    4. Provide an English prompt fragment suitable for generating a profile image
-       of this animal as an anthropomorphic technical developer.
+    4. Provide an English prompt fragment for a profile image. 
+       CRITICAL: Dynamically vary the clothing, actions (e.g., drawing on a whiteboard, inspecting servers), and backgrounds to perfectly match the persona. 
+       STRICTLY AVOID repetitive patterns like "hoodie", "laptop", or "coffee mug".
 
     [Strict Rule]
     Return the output ONLY as a valid JSON string.
@@ -1203,7 +1191,14 @@ async def get_my_progress_summary(
 
 
 @app.get("/cumulative-analysis/{user_id}")
-async def get_cumulative_report(user_id: int):
+async def get_cumulative_report(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+):
+    # 본인 데이터만 조회 가능 (P0 보안 — BACKEND_PR.md TODO #5)
+    if cast(int, current_user.id) != user_id:
+        raise HTTPException(status_code=403, detail="접근 권한이 없습니다.")
+
     weak_list = get_total_weak_patterns(user_id)
 
     if not weak_list:

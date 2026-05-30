@@ -39,8 +39,8 @@ const DEFAULT_THEME: Theme = "dark";
  *   값이 바뀌면 index.html도 함께 수정해야 함
  */
 const THEME_COLOR_MAP: Record<Theme, string> = {
-  dark: "#0F0E0C",
-  light: "#FAF7F2",
+  dark: "#0A0C12",
+  light: "#F5F7FC",
 };
 
 /**

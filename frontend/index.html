@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0F0E0C" />
+    <meta name="theme-color" content="#0A0C12" />
 
     <!--
       ─────────────────────────────────────────────────────────
@@ -17,9 +17,10 @@
        - storage key "sync-theme-storage"는 src/lib/constants.ts의
          THEME_STORAGE_KEY 상수와 반드시 일치해야 한다.
          (Vite는 환경 변수를 HTML에 주입하지 않으므로 하드코딩)
+       - theme-color 헥스는 src/index.css의 --bg, src/store/themeStore.ts의
+         THEME_COLOR_MAP과 항상 일치해야 한다 (cool 팔레트: dark #0A0C12 / light #F5F7FC)
        - localStorage가 손상되거나 비어 있어도 페이지 로드는 무사해야 한다 → try/catch
        - data-theme이 적용되지 않으면 CSS의 :root 기본값(다크)이 적용됨
-       - theme-color 메타 태그도 함께 갱신 — 모바일 브라우저 상단 바 컬러
     -->
     <script>
       (function () {
@@ -36,7 +37,7 @@
           if (tc) {
             tc.setAttribute(
               "content",
-              theme === "light" ? "#FAF7F2" : "#0F0E0C"
+              theme === "light" ? "#F5F7FC" : "#0A0C12"
             );
           }
         } catch (e) {
@@ -45,7 +46,7 @@
       })();
     </script>
 
-    <!-- Google Fonts preconnect (Fraunces + Geist 로딩 가속) -->
+    <!-- Google Fonts preconnect (IBM Plex Sans + IBM Plex Mono 로딩 가속) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 

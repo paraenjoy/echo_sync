@@ -38,7 +38,7 @@ export function PhonemeHeatmap({ phonemes, limit = 12 }: PhonemeHeatmapProps) {
 
   if (sorted.length === 0) {
     return (
-      <p className="text-sm text-fg-muted italic">
+      <p className="text-sm text-fg-muted">
         아직 분석할 음소 데이터가 없어요.
       </p>
     );

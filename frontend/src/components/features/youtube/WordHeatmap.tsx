@@ -21,7 +21,7 @@ export function WordHeatmap({ words }: WordHeatmapProps) {
 
   if (!words || words.length === 0) {
     return (
-      <p className="text-sm text-fg-muted italic">
+      <p className="text-sm text-fg-muted">
         분석할 단어가 없습니다.
       </p>
     );

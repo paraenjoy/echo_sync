@@ -1,10 +1,11 @@
 /* ─────────────────────────────────────────────────────────────
    EchoSync 디자인 토큰
-   - Cool Dark + Blue Accent 팔레트
+   - Cool Dark + Blue Accent 팔레트 (대안 C: 액센트 미세 정제)
+   - 타이포: IBM Plex Sans (디스플레이/본문) + IBM Plex Mono (수치/메타)
+   - 디자인 규칙의 단일 진실 출처: docs/DESIGN_SYSTEM.md
    ───────────────────────────────────────────────────────────── */
 
-@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -27,20 +28,20 @@
     --border:       35 43 66;       /* #232B42  표면 구분선 */
     --border-strong: 55 68 102;     /* #374466  강조 구분선 */
 
-    /* ── Accent: Blue ────────────────────────────────────── */
-    --accent:       99 149 230;     /* #6395E6  primary accent */
+    /* ── Accent: Blue (대안 C: 한 단계 점잖게) ─────────────── */
+    --accent:       91 133 218;     /* #5B85DA  primary accent */
     --accent-fg:    10 12 18;       /* accent 위 텍스트 */
-    --accent-hover: 74 125 211;     /* #4A7DD3 */
+    --accent-hover: 74 112 196;     /* #4A70C4 */
 
-    /* ── Score 그라데이션 ─────────────────────────────────── */
+    /* ── Score 그라데이션 (데이터 전용, 액센트와 분리) ─────── */
     --score-low:    220 38 38;      /* #DC2626  <60 */
     --score-mid:    245 158 11;     /* #F59E0B  60-89 */
     --score-high:   16 185 129;     /* #10B981  ≥90 */
 
-    /* ── 폰트 시스템 ──────────────────────────────────────── */
-    --font-display: "Fraunces", "Iowan Old Style", "Apple Garamond", Georgia, serif;
-    --font-sans:    "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    --font-mono:    "Geist Mono", "SF Mono", "JetBrains Mono", Menlo, monospace;
+    /* ── 폰트 시스템 (IBM Plex 슈퍼패밀리) ─────────────────── */
+    --font-display: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --font-sans:    "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --font-mono:    "IBM Plex Mono", "SF Mono", "JetBrains Mono", Menlo, monospace;
 
     /* ── 모션 ──────────────────────────────────────────────── */
     --ease-out-quad: cubic-bezier(0.25, 0.46, 0.45, 0.94);
@@ -65,10 +66,10 @@
     --border:       210 218 238;    /* #D2DAEE  표면 구분선 */
     --border-strong: 175 188 220;   /* #AFBCDC  강조 구분선 */
 
-    /* Accent: 라이트 배경 대비 보정 blue */
-    --accent:       59 110 196;     /* #3B6EC4  (WCAG AA 통과) */
+    /* Accent: 라이트 배경 대비 보정 blue (대안 C 정제) */
+    --accent:       47 91 168;      /* #2F5BA8  (WCAG AA 통과) */
     --accent-fg:    245 247 252;    /* accent 위 텍스트 */
-    --accent-hover: 42 86 165;      /* #2A56A5 */
+    --accent-hover: 38 73 138;      /* #26498A */
 
     --score-low:    185 28 28;      /* #B91C1C */
     --score-mid:    217 119 6;      /* #D97706 */
@@ -84,7 +85,8 @@
   html, body {
     @apply bg-bg text-fg;
     font-family: var(--font-sans);
-    font-feature-settings: "ss01", "ss02", "cv11";
+    /* IBM Plex 기본 합자/커닝만 사용 (Geist 전용 ss01/ss02/cv11 제거) */
+    font-feature-settings: "kern", "liga", "calt";
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
 
@@ -95,9 +97,8 @@
 
   h1, h2, h3, h4 {
     font-family: var(--font-display);
-    font-feature-settings: "ss01";
     letter-spacing: -0.02em;
-    /* italic 제거 — 기울어진 폰트 전역 차단 */
+    /* 키워드 강조는 무게/크기/색으로. 기울임꼴 전역 차단 */
     font-style: normal;
   }
 
