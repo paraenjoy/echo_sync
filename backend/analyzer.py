@@ -25,17 +25,17 @@ def _score_avg(logs):
     overall = (accuracy + pronunciation + fluency) / 3
 
     return {
-        "accuracy": round(accuracy, 1),
-        "pronunciation": round(pronunciation, 1),
-        "fluency": round(fluency, 1),
-        "overall": round(overall, 1),
+        "accuracy": round(accuracy, 2),
+        "pronunciation": round(pronunciation, 2),
+        "fluency": round(fluency, 2),
+        "overall": round(overall, 2),
     }
 
 
 def _improvement_rate(old_score, new_score):
     if old_score == 0:
         return 0
-    return round(((new_score - old_score) / old_score) * 100, 1)
+    return round(((new_score - old_score) / old_score) * 100, 2)
 
 
 def get_user_progress(user_id: int):
@@ -66,10 +66,10 @@ def get_user_progress(user_id: int):
         recent_avg = _score_avg(recent_logs)
 
         improvement = {
-            "accuracy_point": round(recent_avg["accuracy"] - initial_avg["accuracy"], 1),
-            "pronunciation_point": round(recent_avg["pronunciation"] - initial_avg["pronunciation"], 1),
-            "fluency_point": round(recent_avg["fluency"] - initial_avg["fluency"], 1),
-            "overall_point": round(recent_avg["overall"] - initial_avg["overall"], 1),
+            "accuracy_point": round(recent_avg["accuracy"] - initial_avg["accuracy"], 2),
+            "pronunciation_point": round(recent_avg["pronunciation"] - initial_avg["pronunciation"], 2),
+            "fluency_point": round(recent_avg["fluency"] - initial_avg["fluency"], 2),
+            "overall_point": round(recent_avg["overall"] - initial_avg["overall"], 2),
 
             "accuracy_rate": _improvement_rate(initial_avg["accuracy"], recent_avg["accuracy"]),
             "pronunciation_rate": _improvement_rate(initial_avg["pronunciation"], recent_avg["pronunciation"]),
@@ -175,8 +175,8 @@ def get_total_weak_patterns(user_id: int):
 
             analysis_list.append({
                 "phoneme": phoneme,
-                "avg_score": round(avg_score, 1),
-                "fail_rate": round(fail_rate, 1),
+                "avg_score": round(avg_score, 2),
+                "fail_rate": round(fail_rate, 2),
                 "total_count": total_count,
                 "example_words": list(stat["words"])[:5],
                 "confidence": confidence,

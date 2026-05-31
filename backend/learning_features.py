@@ -45,7 +45,7 @@ def _avg(values):
     values = [float(v) for v in values if v is not None]
     if not values:
         return 0.0
-    return round(sum(values) / len(values), 1)
+    return round(sum(values) / len(values), 2)
 
 
 def _safe_json_loads(text: Optional[str], default):
@@ -122,9 +122,9 @@ def _get_weak_words(word_logs: list[WordLog], limit: int = 8):
         if avg_score <= 75:
             result.append({
                 "word": word,
-                "avg_score": round(avg_score, 1),
+                "avg_score": round(avg_score, 2),
                 "count": int(stat["count"]),
-                "min_score": round(stat["min_score"], 1),
+                "min_score": round(stat["min_score"], 2),
             })
 
     result.sort(key=lambda x: (x["avg_score"], -x["count"]))
@@ -166,7 +166,7 @@ def _trend_from_recent_scores(logs: list[SpeakingLog]):
     first_avg = _avg([log.pronunciation_score for log in first_window])
     recent_avg = _avg([log.pronunciation_score for log in recent_window])
 
-    diff = round(recent_avg - first_avg, 1)
+    diff = round(recent_avg - first_avg, 2)
 
     if diff > 3:
         trend = "improving"
@@ -281,7 +281,7 @@ def _compute_interview_scores(
         if answer
     ])
 
-    content_score = min(100, round(avg_word_count * 5, 1))
+    content_score = min(100, round(avg_word_count * 5, 2))
 
     metadata = _safe_json_loads(study_session.metadata_json, {})
     tech_stack = metadata.get("tech_stack", [])
@@ -295,11 +295,11 @@ def _compute_interview_scores(
             if str(tech).lower() in full_text:
                 mentioned += 1
 
-        technical_score = round((mentioned / len(tech_stack)) * 100, 1)
+        technical_score = round((mentioned / len(tech_stack)) * 100, 2)
     else:
         technical_score = 70.0
 
-    confidence_score = round((pronunciation_avg * 0.4) + (fluency_avg * 0.6), 1)
+    confidence_score = round((pronunciation_avg * 0.4) + (fluency_avg * 0.6), 2)
 
     overall_score = round(
         pronunciation_avg * 0.25
@@ -307,7 +307,7 @@ def _compute_interview_scores(
         + fluency_avg * 0.25
         + content_score * 0.15
         + technical_score * 0.15,
-        1
+        2
     )
 
     return {
@@ -417,7 +417,7 @@ def get_dashboard(
         dashboard["goal_progress"] = {
             "current_pronunciation_avg": current_pronunciation,
             "pronunciation_gap": (
-                round(target_pronunciation - current_pronunciation, 1)
+                round(target_pronunciation - current_pronunciation, 2)
                 if target_pronunciation is not None
                 else None
             ),

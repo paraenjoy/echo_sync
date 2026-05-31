@@ -128,14 +128,14 @@ def process_pronunciation_result(result_obj):
         phonemes = [
             {
                 "ph": ph.phoneme,
-                "score": ph.accuracy_score
+                "score": round(ph.accuracy_score, 2)
             }
             for ph in word.phonemes
         ]
 
         word_details.append({
             "word": word.word,
-            "accuracy": word.accuracy_score,
+            "accuracy": round(word.accuracy_score, 2),
             "error_type": getattr(word, "error_type", None),
             "phonemes": phonemes,
         })
@@ -143,9 +143,9 @@ def process_pronunciation_result(result_obj):
     return {
         "sentence": {
             "text": actual_result.text,
-            "accuracy": pron_result.accuracy_score,
-            "pronunciation": pron_result.pronunciation_score,
-            "fluency": pron_result.fluency_score,
+            "accuracy": round(pron_result.accuracy_score, 2),
+            "pronunciation": round(pron_result.pronunciation_score, 2),
+            "fluency": round(pron_result.fluency_score, 2),
         },
         "words": word_details,
     }
