@@ -12,6 +12,7 @@ import { Link } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { useCumulativeAnalysis } from "@/hooks/queries/useCumulativeAnalysis";
 import { ProcessingSkeleton } from "@/components/common/ProcessingSkeleton";
+import { UserMenu } from "@/components/common/UserMenu";
 import { PhonemeHeatmap } from "@/components/features/dashboard/PhonemeHeatmap";
 import { getErrorMessage } from "@/lib/api";
 
@@ -27,6 +28,11 @@ export default function DashboardPage() {
   return (
     <main className="min-h-dvh bg-bg text-fg">
       <div className="mx-auto max-w-3xl px-6 pt-20 pb-24">
+        {/* 상단 사용자 메뉴 (로그아웃 진입점) — 전역 ThemeToggle 아래로 세로 분리됨 */}
+        <div className="flex justify-end mb-6">
+          <UserMenu />
+        </div>
+
         {/* ── 헤더 ─────────────────────────────────────────── */}
         <header className="mb-14">
           <p className="font-mono text-xs uppercase tracking-[0.18em] text-fg-subtle mb-4">

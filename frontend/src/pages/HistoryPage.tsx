@@ -23,6 +23,7 @@ import { useHistory } from "@/hooks/queries/useHistory";
 import { SessionCard } from "@/components/features/history/SessionCard";
 import { getErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/common/PageHeader";
 
 export default function HistoryPage() {
   const navigate = useNavigate();
@@ -75,6 +76,9 @@ export default function HistoryPage() {
   return (
     <main className="min-h-dvh bg-bg text-fg">
       <div className="mx-auto max-w-3xl px-6 pt-20 pb-24">
+        {/* ── 브레드크럼 (홈 복귀) ─────────────────────────── */}
+        <PageHeader crumbs={[{ label: "히스토리" }]} className="mb-8" />
+
         {/* ── 헤더 ─────────────────────────────────────────── */}
         <header className="mb-12 flex items-end justify-between gap-4">
           <div>

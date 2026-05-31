@@ -11,6 +11,10 @@
  *  2) 캐시 미스 → 자동으로 첫 페이지 로딩 진행, 로딩 끝나면 재검색
  *  3) 모든 페이지 fetch 완료 후에도 없으면 → 404 안내
  *
+ * 네비게이션 (Step 8.3):
+ *  - 상단 BackButton(명령형 navigate)을 공용 PageHeader(선언형 Link)로 교체.
+ *    홈(/) + 히스토리 목록(/history) 동시 복귀 경로를 모든 상태(로딩/에러/404/정상)에 제공.
+ *
  * // TODO (Backend): GET /history/{session_id} 단일 세션 엔드포인트 추가
  *   현재는 전체 목록을 받아 클라이언트에서 찾는 구조다.
  *   딥링크/공유 시 초기 진입 속도 개선을 위해 단일 조회가 권장됨.
@@ -20,10 +24,11 @@
  *   현재는 logs[]에 word-level 데이터가 없어 단어 분석 영역을 placeholder로 둔다.
  */
 import { useMemo } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useHistory, pickSessionFromPages } from "@/hooks/queries/useHistory";
 import { cn, getScoreTier, scoreTierClasses } from "@/lib/utils";
 import { ScoreDisplay } from "@/components/common/ScoreDisplay";
+import { PageHeader } from "@/components/common/PageHeader";
 import { getErrorMessage } from "@/lib/api";
 import type {
   HistorySession,
@@ -32,7 +37,6 @@ import type {
 } from "@/types/history";
 
 export default function HistoryDetailPage() {
-  const navigate = useNavigate();
   const params = useParams<{ id: string }>();
   const sessionId = Number(params.id);
   const isValidId = Number.isFinite(sessionId) && sessionId > 0;
@@ -49,18 +53,18 @@ export default function HistoryDetailPage() {
 
   // ── 잘못된 URL ───────────────────────────────────────────
   if (!isValidId) {
-    return <NotFound onBack={() => navigate("/history")} />;
+    return <NotFound />;
   }
 
   // ── 로딩 중 (캐시 미스) ───────────────────────────────────
   if (historyQuery.isPending) {
-    return <DetailSkeleton onBack={() => navigate("/history")} />;
+    return <DetailSkeleton />;
   }
 
   // ── 에러 ──────────────────────────────────────────────────
   if (historyQuery.isError) {
     return (
-      <Shell onBack={() => navigate("/history")}>
+      <Shell>
         <div className="p-5 rounded-xl bg-score-low/10 border border-score-low/30 animate-fade-up">
           <p className="font-mono text-[10px] uppercase tracking-wider text-score-low mb-2">
             Error
@@ -82,12 +86,12 @@ export default function HistoryDetailPage() {
 
   // ── 데이터는 로드됐는데 해당 세션이 없음 (잘못된 ID 또는 다른 사용자 소유) ─
   if (!session) {
-    return <NotFound onBack={() => navigate("/history")} />;
+    return <NotFound />;
   }
 
   // ── 정상 ─────────────────────────────────────────────────
   return (
-    <Shell onBack={() => navigate("/history")}>
+    <Shell>
       <SessionHeader session={session} />
       <OverallScoreCard logs={session.logs} />
       <QuestionList questions={session.questions} logs={session.logs} />
@@ -97,36 +101,22 @@ export default function HistoryDetailPage() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Shell — 페이지 공통 레이아웃 (뒤로가기 + 컨테이너)
+// Shell — 페이지 공통 레이아웃 (브레드크럼 + 컨테이너)
 // ─────────────────────────────────────────────────────────────
-function Shell({
-  children,
-  onBack,
-}: {
-  children: React.ReactNode;
-  onBack: () => void;
-}) {
+function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-dvh bg-bg text-fg">
       <div className="mx-auto max-w-3xl px-6 pt-12 pb-24">
-        <BackButton onClick={onBack} />
+        {/* 홈(/) 복귀 + 히스토리 목록(/history) 복귀를 동시에 제공 */}
+        <PageHeader
+          crumbs={[
+            { label: "히스토리", to: "/history" },
+            { label: "세션 상세" },
+          ]}
+        />
         <div className="mt-6 space-y-8">{children}</div>
       </div>
     </main>
-  );
-}
-
-function BackButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-fg-subtle hover:text-fg transition-colors"
-      aria-label="히스토리 목록으로 돌아가기"
-    >
-      <span aria-hidden>←</span>
-      히스토리
-    </button>
   );
 }
 
@@ -426,9 +416,9 @@ function InlineAudio({ label, src }: { label: string; src: string }) {
 // ─────────────────────────────────────────────────────────────
 // 404 / Not Found
 // ─────────────────────────────────────────────────────────────
-function NotFound({ onBack }: { onBack: () => void }) {
+function NotFound() {
   return (
-    <Shell onBack={onBack}>
+    <Shell>
       <div className="rounded-xl border border-border bg-bg-elevated p-10 text-center animate-fade-up">
         <p className="font-mono text-xs uppercase tracking-[0.18em] text-fg-subtle mb-3">
           Not Found
@@ -455,9 +445,9 @@ function NotFound({ onBack }: { onBack: () => void }) {
 // ─────────────────────────────────────────────────────────────
 // 로딩 스켈레톤
 // ─────────────────────────────────────────────────────────────
-function DetailSkeleton({ onBack }: { onBack: () => void }) {
+function DetailSkeleton() {
   return (
-    <Shell onBack={onBack}>
+    <Shell>
       {/* 헤더 자리 */}
       <div className="space-y-3" aria-busy="true">
         <div className="h-3 w-40 rounded-sm animate-shimmer" />
