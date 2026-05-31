@@ -120,6 +120,23 @@ function calculateVolume(input: Float32Array): number {
   return normalized < 0.02 ? 0 : normalized;
 }
 
+/**
+ * [작업 3 추가] MediaRecorder 컨테이너 mimeType 선택.
+ *
+ * - 명시하지 않으면 브라우저 기본값에 의존해 컨테이너 헤더 일관성이 떨어진다.
+ * - 우선순위대로 isTypeSupported로 검사하여 첫 지원 타입을 사용.
+ * - Safari는 webm 미지원 → audio/mp4 폴백. 모두 미지원이면 undefined(기본값 위임).
+ * - 로컬 재생 Blob 타입을 이 값과 일치시켜야 Safari 등에서 재생 실패를 막는다.
+ */
+function pickRecorderMimeType(): string | undefined {
+  if (typeof MediaRecorder === "undefined") return undefined;
+  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+  for (const type of candidates) {
+    if (MediaRecorder.isTypeSupported?.(type)) return type;
+  }
+  return undefined;
+}
+
 // ---------- 훅 ----------
 
 export function useAudioStreamer(): UseAudioStreamerReturn {
@@ -208,7 +225,10 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
       ws.onmessage = null;
       ws.onerror = null;
       ws.onclose = null;
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+      if (
+        ws.readyState === WebSocket.OPEN ||
+        ws.readyState === WebSocket.CONNECTING
+      ) {
         try {
           ws.close();
         } catch {
@@ -281,8 +301,12 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
 
         if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError") {
           code = "PERMISSION_DENIED";
-          message = "마이크 권한이 거부되었습니다. 브라우저 설정에서 권한을 허용해주세요.";
-        } else if (e.name === "NotFoundError" || e.name === "DevicesNotFoundError") {
+          message =
+            "마이크 권한이 거부되었습니다. 브라우저 설정에서 권한을 허용해주세요.";
+        } else if (
+          e.name === "NotFoundError" ||
+          e.name === "DevicesNotFoundError"
+        ) {
           code = "DEVICE_NOT_FOUND";
           message = "마이크 장치를 찾을 수 없습니다.";
         }
@@ -295,9 +319,13 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
       streamRef.current = stream;
 
       // ---------- 2) MediaRecorder (로컬 재생용) ----------
-      // 사용자가 결과 화면에서 자기 목소리를 들을 수 있도록 별도 녹음
+      // 사용자가 결과 화면에서 자기 목소리를 들을 수 있도록 별도 녹음.
+      // [작업 3] mimeType을 명시해 컨테이너 헤더 일관성을 높이고 Safari 호환성 확보.
       try {
-        const recorder = new MediaRecorder(stream);
+        const mimeType = pickRecorderMimeType();
+        const recorder = mimeType
+          ? new MediaRecorder(stream, { mimeType })
+          : new MediaRecorder(stream);
         localChunksRef.current = [];
         recorder.ondataavailable = (e) => {
           if (e.data && e.data.size > 0) {
@@ -308,7 +336,9 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
         mediaRecorderRef.current = recorder;
       } catch {
         // MediaRecorder 미지원은 치명적이지 않으므로 경고만 (LocalAudio가 비활성화될 뿐)
-        console.warn("[useAudioStreamer] MediaRecorder unavailable, local playback disabled.");
+        console.warn(
+          "[useAudioStreamer] MediaRecorder unavailable, local playback disabled."
+        );
       }
 
       // ---------- 3) WebSocket 연결 ----------
@@ -404,19 +434,21 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
           // 2) 최종 결과 수신
           if (isFinalResult(data)) {
             // 로컬 녹음 Blob URL 생성
-            if (
-              mediaRecorderRef.current &&
-              mediaRecorderRef.current.state !== "inactive"
-            ) {
-              mediaRecorderRef.current.onstop = () => {
+            // [작업 3] recorder를 로컬로 캡처 — 직후 cleanup()이 ref를 null로 만들어도
+            //          onstop 클로저는 안전. Blob 타입을 recorder.mimeType과 일치시켜
+            //          Safari(audio/mp4) 등에서의 재생 실패를 방지한다.
+            const recorder = mediaRecorderRef.current;
+            if (recorder && recorder.state !== "inactive") {
+              const blobType = recorder.mimeType || "audio/webm";
+              recorder.onstop = () => {
                 const blob = new Blob(localChunksRef.current, {
-                  type: "audio/webm",
+                  type: blobType,
                 });
                 const objUrl = URL.createObjectURL(blob);
                 safeSet(setLocalAudioUrl, objUrl);
               };
               try {
-                mediaRecorderRef.current.stop();
+                recorder.stop();
               } catch {
                 /* noop */
               }

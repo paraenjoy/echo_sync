@@ -27,6 +27,7 @@ import {
 } from "@/hooks/queries/useGenerateQuestions";
 import { cn, getScoreTier, scoreTierClasses } from "@/lib/utils";
 import { ScoreDisplay } from "@/components/common/ScoreDisplay";
+import { AudioPlayer } from "@/components/common/AudioPlayer";
 import { getErrorMessage } from "@/lib/api";
 import type { YoutubeQuestion } from "@/types/youtube";
 
@@ -333,18 +334,10 @@ function ResultSection({
             Listen & Compare
           </p>
 
-          {localAudioUrl && (
-            <div>
-              <p className="text-xs text-fg-muted mb-1">내 발화</p>
-              <audio controls src={localAudioUrl} className="w-full" />
-            </div>
-          )}
+          {localAudioUrl && <AudioPlayer label="내 발화" src={localAudioUrl} />}
 
           {result.model_tts_url && (
-            <div>
-              <p className="text-xs text-fg-muted mb-1">모범 발음</p>
-              <audio controls src={result.model_tts_url} className="w-full" />
-            </div>
+            <AudioPlayer label="모범 발음" src={result.model_tts_url} />
           )}
         </div>
       )}

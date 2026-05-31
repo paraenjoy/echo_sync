@@ -44,6 +44,7 @@ import { useSubmitAnswer } from "@/hooks/queries/useInterviewMutations";
 import { getErrorMessage } from "@/lib/api";
 import { cn, getScoreTier, scoreTierClasses } from "@/lib/utils";
 import { ScoreDisplay } from "@/components/common/ScoreDisplay";
+import { AudioPlayer } from "@/components/common/AudioPlayer";
 import type { WsFinalResult } from "@/types/ws";
 import type { InterviewAnswerResponse } from "@/types/interview";
 
@@ -350,8 +351,7 @@ export default function InterviewRoomPage() {
           <button
             type="button"
             onClick={handleExit}
-            className="shrink-0 text-xs font-mono uppercase tracking-wider text-fg-subtle hover:text-fg transition-colors px-2 py-1"
-          >
+            className="shrink-0 mr-12 text-xs font-mono uppercase tracking-wider text-fg-subtle hover:text-fg transition-colors px-2 py-1"          >
             종료
           </button>
         </div>
@@ -453,12 +453,14 @@ function VoiceInputPanel({
   return (
     <div className="grid place-items-center py-2">
       <MicButton
+        size="sm"
+        showCaption={false}
         status={status}
         volume={volume}
         onToggle={onToggle}
         disabled={disabled}
       />
-      <p className="mt-12 text-xs text-fg-subtle font-mono uppercase tracking-wider">
+      <p className="mt-4 text-xs text-fg-subtle font-mono uppercase tracking-wider">
         {hint}
       </p>
     </div>
@@ -681,31 +683,16 @@ function UserVoiceBubble({
             {(localAudioUrl || result.model_tts_url) && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {localAudioUrl && (
-                  <AudioUnit label="내 음성" src={localAudioUrl} />
+                  <AudioPlayer label="내 음성" src={localAudioUrl} />
                 )}
                 {result.model_tts_url && (
-                  <AudioUnit label="모범 답안" src={result.model_tts_url} />
+                  <AudioPlayer label="모범 답안" src={result.model_tts_url} />
                 )}
               </div>
             )}
           </div>
         </details>
       </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// 오디오 재생 셀 (로컬/모범 답안)
-// ─────────────────────────────────────────────────────────────
-function AudioUnit({ label, src }: { label: string; src: string }) {
-  return (
-    <div className="space-y-1.5">
-      <p className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">
-        {label}
-      </p>
-      {/* native audio: Editorial 톤과 어울리도록 작게 표시 */}
-      <audio controls src={src} className="w-full h-9" preload="none" />
     </div>
   );
 }
