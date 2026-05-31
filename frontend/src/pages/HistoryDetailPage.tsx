@@ -1,34 +1,29 @@
 /**
- * HistoryDetailPage (/history/:id) — Step 5.4 정식 구현
+ * HistoryDetailPage (/history/:id)
  *
  * 책임:
  *  - URL 파라미터 :id로 단일 세션 상세 표시
- *  - useHistory 캐시에서 우선 탐색, 미스 시 첫 페이지 fetch 후 재탐색
- *  - 질문별 답변(log) 매칭 + 점수/코칭/음성 비교 표시
+ *  - GET /history/{id} 단일 조회 (useHistorySession). 목록 캐시가 있으면 즉시 표시 후 최신화.
+ *  - 면접 세션이면 페르소나 리포트(InterviewReportSection: 동물/총점/총평/스택 파이) 표시
+ *  - 질문별 답변(log) 매칭 + 점수/코칭/음성/단어 히트맵 표시
  *
- * 데이터 흐름:
- *  1) useHistory() 구독 → 캐시된 페이지에서 sessionId 검색
- *  2) 캐시 미스 → 자동으로 첫 페이지 로딩 진행, 로딩 끝나면 재검색
- *  3) 모든 페이지 fetch 완료 후에도 없으면 → 404 안내
+ * 데이터 흐름 (Step 9 — BACKEND_PR.md TODO #1·#2·#3 반영):
+ *  1) useHistorySession(id) → GET /history/{id}
+ *  2) 목록(useHistory) 캐시에 해당 세션이 있으면 initialData로 즉시 렌더 후 백그라운드 최신화
+ *  3) 404 → NotFound / 403 → Forbidden / 그 외 → 에러 + 재시도
  *
  * 네비게이션 (Step 8.3):
- *  - 상단 BackButton(명령형 navigate)을 공용 PageHeader(선언형 Link)로 교체.
- *    홈(/) + 히스토리 목록(/history) 동시 복귀 경로를 모든 상태(로딩/에러/404/정상)에 제공.
- *
- * // TODO (Backend): GET /history/{session_id} 단일 세션 엔드포인트 추가
- *   현재는 전체 목록을 받아 클라이언트에서 찾는 구조다.
- *   딥링크/공유 시 초기 진입 속도 개선을 위해 단일 조회가 권장됨.
- *
- * // TODO (Backend): Include word_logs in GET /history logs[]
- *   단어 단위 정확도가 응답에 포함되면 WordHeatmap을 재사용할 수 있다.
- *   현재는 logs[]에 word-level 데이터가 없어 단어 분석 영역을 placeholder로 둔다.
+ *  - 공용 PageHeader(선언형 Link)로 홈(/) + 히스토리 목록(/history) 동시 복귀 경로를
+ *    모든 상태(로딩/에러/404/정상)에 제공.
  */
 import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useHistory, pickSessionFromPages } from "@/hooks/queries/useHistory";
+import { useHistorySession } from "@/hooks/queries/useHistorySession";
 import { cn, getScoreTier, scoreTierClasses } from "@/lib/utils";
 import { ScoreDisplay } from "@/components/common/ScoreDisplay";
 import { PageHeader } from "@/components/common/PageHeader";
+import { WordHeatmap } from "@/components/features/youtube/WordHeatmap";
+import { InterviewReportSection } from "@/components/features/history/InterviewReportSection";
 import { getErrorMessage } from "@/lib/api";
 import type {
   HistorySession,
@@ -36,33 +31,36 @@ import type {
   HistoryLog,
 } from "@/types/history";
 
+/** axios 에러에서 HTTP 상태 코드 추출 (any 없이) */
+function httpStatus(error: unknown): number | undefined {
+  return (error as { response?: { status?: number } } | null)?.response?.status;
+}
+
 export default function HistoryDetailPage() {
   const params = useParams<{ id: string }>();
   const sessionId = Number(params.id);
   const isValidId = Number.isFinite(sessionId) && sessionId > 0;
 
-  // useHistory가 캐시되어 있으면 즉시 결과, 아니면 첫 페이지를 fetch한다.
-  const historyQuery = useHistory();
-  const session = useMemo(
-    () =>
-      isValidId
-        ? pickSessionFromPages(historyQuery.data?.pages, sessionId)
-        : undefined,
-    [historyQuery.data, sessionId, isValidId]
-  );
+  // 단일 엔드포인트 조회 — 목록 캐시가 있으면 initialData로 즉시 표시(훅 내부 처리)
+  const query = useHistorySession(sessionId);
+  const session = query.data;
 
   // ── 잘못된 URL ───────────────────────────────────────────
   if (!isValidId) {
     return <NotFound />;
   }
 
-  // ── 로딩 중 (캐시 미스) ───────────────────────────────────
-  if (historyQuery.isPending) {
+  // ── 로딩 중 ───────────────────────────────────────────────
+  if (query.isPending) {
     return <DetailSkeleton />;
   }
 
-  // ── 에러 ──────────────────────────────────────────────────
-  if (historyQuery.isError) {
+  // ── 에러 (404/403 분기) ───────────────────────────────────
+  if (query.isError) {
+    const status = httpStatus(query.error);
+    if (status === 404) return <NotFound />;
+    if (status === 403) return <Forbidden />;
+
     return (
       <Shell>
         <div className="p-5 rounded-xl bg-score-low/10 border border-score-low/30 animate-fade-up">
@@ -70,11 +68,11 @@ export default function HistoryDetailPage() {
             Error
           </p>
           <p className="text-sm text-fg mb-4 leading-relaxed">
-            {getErrorMessage(historyQuery.error)}
+            {getErrorMessage(query.error)}
           </p>
           <button
             type="button"
-            onClick={() => historyQuery.refetch()}
+            onClick={() => query.refetch()}
             className="text-xs font-mono uppercase tracking-wider text-fg-muted hover:text-fg transition-colors"
           >
             재시도
@@ -84,7 +82,7 @@ export default function HistoryDetailPage() {
     );
   }
 
-  // ── 데이터는 로드됐는데 해당 세션이 없음 (잘못된 ID 또는 다른 사용자 소유) ─
+  // ── 성공했으나 데이터 없음 (방어) ─────────────────────────
   if (!session) {
     return <NotFound />;
   }
@@ -93,6 +91,9 @@ export default function HistoryDetailPage() {
   return (
     <Shell>
       <SessionHeader session={session} />
+      {session.interview_report && (
+        <InterviewReportSection report={session.interview_report} />
+      )}
       <OverallScoreCard logs={session.logs} />
       <QuestionList questions={session.questions} logs={session.logs} />
       <OrphanLogsSection logs={session.logs} />
@@ -210,13 +211,13 @@ function QuestionList({
   questions: HistoryQuestion[];
   logs: HistoryLog[];
 }) {
-  if (questions.length === 0) return null;
-
-  // 질문별 최신 답변 매칭
+  // 질문별 최신 답변 매칭 (Hook은 조건부 return 이전에 호출)
   const sorted = useMemo(
     () => [...questions].sort((a, b) => a.order_no - b.order_no),
     [questions]
   );
+
+  if (questions.length === 0) return null;
 
   return (
     <section className="space-y-6 animate-fade-up">
@@ -323,13 +324,16 @@ function AnswerBlock({
         </div>
       )}
 
-      {/* 단어 분석 자리 */}
-      {/*
-       * TODO (Backend): Include word_logs in GET /history logs[]
-       *   word-level 데이터가 포함되면 WordHeatmap을 여기에 렌더한다:
-       *     {log.word_logs && <WordHeatmap words={normalize(log.word_logs)} />}
-       *   현재는 응답에 포함되지 않아 placeholder를 비워둔다.
-       */}
+      {/* 단어별 발음 정확도 — word_logs 연동 (BACKEND_PR.md TODO #3 ✅) */}
+      {/* 백엔드가 이미 WsWord 스키마(accuracy/phonemes)로 변환해 보내므로 그대로 전달 */}
+      {log.word_logs && log.word_logs.length > 0 && (
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle mb-2">
+            Word analysis
+          </p>
+          <WordHeatmap words={log.word_logs} />
+        </div>
+      )}
 
       {/* 코칭 메시지 */}
       {log.coaching_message && (
@@ -429,6 +433,34 @@ function NotFound() {
         </h2>
         <p className="text-fg-muted text-sm leading-relaxed mb-6 max-w-md mx-auto">
           삭제되었거나, 잘못된 링크일 수 있어요. 히스토리에서 다시
+          선택해주세요.
+        </p>
+        <Link
+          to="/history"
+          className="inline-block px-5 py-2.5 rounded-md border border-border-strong text-fg text-sm hover:border-accent hover:text-accent transition-colors"
+        >
+          히스토리로 돌아가기
+        </Link>
+      </div>
+    </Shell>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// 403 / Forbidden — 다른 사용자 소유 세션 접근
+// ─────────────────────────────────────────────────────────────
+function Forbidden() {
+  return (
+    <Shell>
+      <div className="rounded-xl border border-border bg-bg-elevated p-10 text-center animate-fade-up">
+        <p className="font-mono text-xs uppercase tracking-[0.18em] text-fg-subtle mb-3">
+          Forbidden
+        </p>
+        <h2 className="font-display text-2xl leading-tight mb-3">
+          이 세션에 <span className="text-accent">접근할 수 없어요</span>
+        </h2>
+        <p className="text-fg-muted text-sm leading-relaxed mb-6 max-w-md mx-auto">
+          본인이 진행한 세션만 열람할 수 있어요. 내 히스토리에서 다시
           선택해주세요.
         </p>
         <Link

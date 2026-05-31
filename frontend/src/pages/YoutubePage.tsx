@@ -222,7 +222,7 @@ export default function YoutubePage() {
         )}
 
         {/* Processing skeleton */}
-        {audio.status === "processing" && <ProcessingSkeleton />}
+        {audio.status === "processing" && <ProcessingSkeleton stage={audio.stage} />}
 
         {/* Result */}
         {audio.status === "completed" && audio.result && (

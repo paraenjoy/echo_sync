@@ -6,31 +6,37 @@
  *  - 음성 모드: useAudioStreamer로 답변 → 결과 transcript을 자동으로 답변 제출
  *  - 텍스트 모드: Textarea로 답변 → useSubmitAnswer 호출
  *  - 각 턴: 사용자 답변 → 꼬리질문 → 다시 답변 → ...
+ *  - 종료(status === "end" 또는 사용자 종료) → useFinalizeInterview로 동물 페르소나 리포트
+ *    생성 → 히스토리 상세(/history/{id})로 이동 (Step 9, Implementation.md §2-C)
  *
  * 라우터 state 의존:
  *  - Setup에서 navigate state로 sessionId, questionId, firstQuestion,
  *    position, interviewMode 전달
  *  - state 없으면 (URL 직접 입력, 새로고침 등) Setup으로 redirect
  *
+ * 직전 답변 피드백:
+ *  - 음성 답변의 WsFinalResult(점수·WordHeatmap·코칭·오디오)는 UserVoiceBubble이
+ *    다음 질문 직전에 그대로 표시하므로 별도 누적/이벤트가 필요 없다.
+ *
  * 핵심 흐름:
  *
  *   [음성 모드]
  *     사용자 클릭 → audio.start() → 녹음 중
- *     사용자 재클릭 → audio.stop() → 서버 분석 대기
+ *     사용자 재클릭 → audio.stop() → 서버 분석 대기(asr→scoring→coaching)
  *     audio.status === "completed" 도달 →
  *       1. messages에 user-voice + processing 추가
  *       2. submitMutation.mutate(transcript)
  *       3. audio.reset()
  *     submitMutation.onSuccess →
  *       1. processing 제거 + 새 question 추가
- *       2. currentQuestion/Id 갱신
+ *       2. status === "end"면 ended=true (종료 패널), 아니면 currentQuestion/Id 갱신
  *
  *   [텍스트 모드]
- *     사용자 입력 + 전송 클릭 (또는 Cmd/Ctrl+Enter) →
- *       1. messages에 user-text + processing 추가
- *       2. submitMutation.mutate(text)
- *       3. textarea clear
- *     onSuccess → 위와 동일
+ *     사용자 입력 + 전송 → user-text + processing 추가 → mutate → onSuccess(위와 동일)
+ *
+ *   [종료]
+ *     종료 패널 "결과 리포트 보기" 또는 헤더 종료 → finalize.mutate(sessionId)
+ *       → 로딩 오버레이(ProcessingSkeleton) → onSuccess navigate(/history/{id})
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -38,9 +44,13 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MicButton } from "@/components/common/MicButton";
 import { ErrorModal } from "@/components/common/ErrorModal";
+import { ProcessingSkeleton } from "@/components/common/ProcessingSkeleton";
 import { WordHeatmap } from "@/components/features/youtube/WordHeatmap";
 import { useAudioStreamer } from "@/hooks/useAudioStreamer";
-import { useSubmitAnswer } from "@/hooks/queries/useInterviewMutations";
+import {
+  useSubmitAnswer,
+  useFinalizeInterview,
+} from "@/hooks/queries/useInterviewMutations";
 import { getErrorMessage } from "@/lib/api";
 import { cn, getScoreTier, scoreTierClasses } from "@/lib/utils";
 import { ScoreDisplay } from "@/components/common/ScoreDisplay";
@@ -112,6 +122,7 @@ export default function InterviewRoomPage() {
   // ── 훅 ────────────────────────────────────────────────────
   const audio = useAudioStreamer();
   const submitMutation = useSubmitAnswer();
+  const finalize = useFinalizeInterview();
 
   // ── 핵심 상태 ──────────────────────────────────────────────
   const sessionId = state.sessionId;
@@ -127,6 +138,10 @@ export default function InterviewRoomPage() {
   const [currentQuestion, setCurrentQuestion] = useState(state.firstQuestion);
   const [mode, setMode] = useState<InputMode>("voice");
   const [textAnswer, setTextAnswer] = useState("");
+
+  // 면접 종료 여부 (백엔드 status==="end" 또는 사용자 종료)
+  const [ended, setEnded] = useState(false);
+  const [finalizeError, setFinalizeError] = useState<string | null>(null);
 
   // ── 자동 스크롤 ────────────────────────────────────────────
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -162,16 +177,20 @@ export default function InterviewRoomPage() {
         removeMessage(processingIdRef.current);
         processingIdRef.current = null;
       }
-      // 2) 새 질문 push
+      // 2) 새 질문(또는 종료 멘트) push
       appendMessage({
         kind: "question",
         id: genId(),
         questionId: data.next_question_id,
         text: data.follow_up,
       });
-      // 3) 현재 질문 갱신 (다음 답변 제출 시 이 값들이 백엔드로 전달됨)
-      setCurrentQuestion(data.follow_up);
-      setCurrentQuestionId(data.next_question_id);
+      // 3) 종료 신호면 입력을 닫고 종료 패널로, 아니면 현재 질문 갱신
+      if (data.status === "end") {
+        setEnded(true);
+      } else {
+        setCurrentQuestion(data.follow_up);
+        setCurrentQuestionId(data.next_question_id);
+      }
     },
     [appendMessage, removeMessage]
   );
@@ -323,9 +342,31 @@ export default function InterviewRoomPage() {
     return map[state.interviewMode] ?? state.interviewMode;
   }, [state.interviewMode]);
 
+  // ── 종료 → 페르소나 리포트 생성 후 상세로 이동 ───────────────
+  const finalizeAndGoToReport = useCallback(() => {
+    if (finalize.isPending) return;
+    setFinalizeError(null);
+    finalize.mutate(sessionId, {
+      onSuccess: (data) => {
+        // finalize는 데이터 부족 시 200 + status:"error"로 응답
+        if (data.status === "error" || !data.session_id) {
+          setFinalizeError(
+            data.animal_reason ||
+              "리포트를 생성하기에 답변 데이터가 부족해요. 조금 더 진행한 뒤 다시 시도해주세요."
+          );
+          return;
+        }
+        navigate(`/history/${sessionId}`, { replace: true });
+      },
+      onError: (err) => setFinalizeError(getErrorMessage(err)),
+    });
+  }, [finalize, sessionId, navigate]);
+
+  // 헤더 종료: 진행 중이면 이탈만(리포트 없음), 종료 상태면 동일 흐름
   const handleExit = () => {
+    if (finalize.isPending) return;
     const ok = window.confirm(
-      "면접을 종료하시겠어요? 진행 내역은 저장되어 있어요."
+      "면접을 나가시겠어요? 진행 내역은 저장되어 있어요. (결과 리포트는 종료 후 생성할 수 있어요)"
     );
     if (ok) navigate("/", { replace: true });
   };
@@ -351,8 +392,10 @@ export default function InterviewRoomPage() {
           <button
             type="button"
             onClick={handleExit}
-            className="shrink-0 mr-12 text-xs font-mono uppercase tracking-wider text-fg-subtle hover:text-fg transition-colors px-2 py-1"          >
-            종료
+            disabled={finalize.isPending}
+            className="shrink-0 mr-12 text-xs font-mono uppercase tracking-wider text-fg-subtle hover:text-fg transition-colors px-2 py-1 disabled:opacity-50"
+          >
+            나가기
           </button>
         </div>
       </header>
@@ -371,34 +414,45 @@ export default function InterviewRoomPage() {
         </div>
       </section>
 
-      {/* ── 입력 영역 (sticky bottom) ──────────────────────── */}
+      {/* ── 입력/종료 영역 (sticky bottom) ─────────────────── */}
       <footer className="border-t border-border bg-bg-elevated/40 backdrop-blur-sm sticky bottom-0 z-20">
         <div className="mx-auto max-w-3xl px-6 py-5">
-          {/* 모드 토글 + 질문 카운터 */}
-          <div className="flex items-center justify-between mb-4">
-            <ModeToggle mode={mode} onChange={handleModeChange} />
-            <p className="text-[10px] font-mono uppercase tracking-wider text-fg-subtle tabular-nums">
-              Question #{questionCount}
-            </p>
-          </div>
-
-          {/* 모드별 입력 위젯 */}
-          {mode === "voice" ? (
-            <VoiceInputPanel
-              status={audio.status}
-              volume={audio.volume}
-              onToggle={handleMicToggle}
-              disabled={inputDisabled}
+          {ended ? (
+            <EndPanel
+              onViewReport={finalizeAndGoToReport}
+              onLater={() => navigate("/", { replace: true })}
+              pending={finalize.isPending}
+              error={finalizeError}
             />
           ) : (
-            <TextInputPanel
-              value={textAnswer}
-              onChange={setTextAnswer}
-              onSubmit={handleTextSubmit}
-              onKeyDown={handleTextareaKeyDown}
-              disabled={inputDisabled}
-              isPending={submitMutation.isPending}
-            />
+            <>
+              {/* 모드 토글 + 질문 카운터 */}
+              <div className="flex items-center justify-between mb-4">
+                <ModeToggle mode={mode} onChange={handleModeChange} />
+                <p className="text-[10px] font-mono uppercase tracking-wider text-fg-subtle tabular-nums">
+                  Question #{questionCount}
+                </p>
+              </div>
+
+              {/* 모드별 입력 위젯 */}
+              {mode === "voice" ? (
+                <VoiceInputPanel
+                  status={audio.status}
+                  volume={audio.volume}
+                  onToggle={handleMicToggle}
+                  disabled={inputDisabled}
+                />
+              ) : (
+                <TextInputPanel
+                  value={textAnswer}
+                  onChange={setTextAnswer}
+                  onSubmit={handleTextSubmit}
+                  onKeyDown={handleTextareaKeyDown}
+                  disabled={inputDisabled}
+                  isPending={submitMutation.isPending}
+                />
+              )}
+            </>
           )}
         </div>
       </footer>
@@ -423,90 +477,76 @@ export default function InterviewRoomPage() {
           }
         />
       )}
+
+      {/* ── 페르소나 생성 로딩 오버레이 ──────────────────────── */}
+      {finalize.isPending && <FinalizeOverlay />}
     </main>
   );
 }
 
 // ─────────────────────────────────────────────────────────────
-// 입력 패널 — 음성 모드
+// 종료 패널 — 면접 종료 후 리포트 생성 진입점
 // ─────────────────────────────────────────────────────────────
-function VoiceInputPanel({
-  status,
-  volume,
-  onToggle,
-  disabled,
+function EndPanel({
+  onViewReport,
+  onLater,
+  pending,
+  error,
 }: {
-  status: ReturnType<typeof useAudioStreamer>["status"];
-  volume: number;
-  onToggle: () => void;
-  disabled: boolean;
+  onViewReport: () => void;
+  onLater: () => void;
+  pending: boolean;
+  error: string | null;
 }) {
-  const hint =
-    status === "recording"
-      ? "답변이 끝나면 마이크를 다시 눌러주세요"
-      : status === "processing"
-        ? "음성을 분석하고 있어요"
-        : status === "connecting"
-          ? "마이크를 연결하고 있어요"
-          : "마이크를 눌러 답변을 시작하세요";
-
   return (
-    <div className="grid place-items-center py-2">
-      <MicButton
-        size="sm"
-        showCaption={false}
-        status={status}
-        volume={volume}
-        onToggle={onToggle}
-        disabled={disabled}
-      />
-      <p className="mt-4 text-xs text-fg-subtle font-mono uppercase tracking-wider">
-        {hint}
+    <div className="text-center py-2">
+      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-fg-subtle mb-2">
+        Interview complete
       </p>
+      <p className="text-sm text-fg-muted mb-4">
+        면접이 끝났어요. 동물 페르소나 리포트를 만들어 결과를 확인해보세요.
+      </p>
+
+      {error && (
+        <p className="mx-auto mb-4 max-w-md rounded-md border border-score-low/30 bg-score-low/10 px-3 py-2 text-sm text-score-low">
+          {error}
+        </p>
+      )}
+
+      <div className="flex items-center justify-center gap-2">
+        <Button variant="primary" onClick={onViewReport} disabled={pending}>
+          {pending ? "리포트 생성 중…" : "결과 리포트 보기"}
+        </Button>
+        <Button variant="ghost" onClick={onLater} disabled={pending}>
+          나중에
+        </Button>
+      </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────
-// 입력 패널 — 텍스트 모드
+// 페르소나 생성 로딩 오버레이 (무거운 AI 호출 마스킹)
 // ─────────────────────────────────────────────────────────────
-function TextInputPanel({
-  value,
-  onChange,
-  onSubmit,
-  onKeyDown,
-  disabled,
-  isPending,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onSubmit: () => void;
-  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
-  disabled: boolean;
-  isPending: boolean;
-}) {
+function FinalizeOverlay() {
   return (
-    <div className="space-y-3">
-      <Textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={onKeyDown}
-        placeholder="답변을 입력해주세요. (Cmd/Ctrl + Enter로 전송)"
-        rows={4}
-        disabled={disabled}
-        className="min-h-[112px]"
-      />
-      <div className="flex items-center justify-between">
-        <p className="text-[10px] font-mono uppercase tracking-wider text-fg-subtle">
-          {isPending ? "전송 중" : "Cmd / Ctrl + Enter"}
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-bg/90 p-6 backdrop-blur-sm"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="w-full max-w-md">
+        <p className="mb-2 text-center font-mono text-[10px] uppercase tracking-[0.18em] text-fg-subtle">
+          Generating report
         </p>
-        <Button
-          onClick={onSubmit}
-          disabled={!value.trim() || disabled}
-          size="md"
-        >
-          {isPending ? "전송 중..." : "전송"}
-        </Button>
+        <h2 className="mb-3 text-center font-display text-2xl leading-tight">
+          면접 데이터를 분석하고 있어요
+        </h2>
+        <p className="mb-8 text-center text-sm leading-relaxed text-fg-muted">
+          답변을 종합해 동물 페르소나와 총평, 기술 스택 비중을 만드는 중이에요.
+          잠시만 기다려주세요.
+        </p>
+        <ProcessingSkeleton />
       </div>
     </div>
   );
@@ -749,5 +789,90 @@ function ModeToggleButton({
     >
       {label}
     </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// 입력 패널 — 음성 모드
+// ─────────────────────────────────────────────────────────────
+function VoiceInputPanel({
+  status,
+  volume,
+  onToggle,
+  disabled,
+}: {
+  status: ReturnType<typeof useAudioStreamer>["status"];
+  volume: number;
+  onToggle: () => void;
+  disabled: boolean;
+}) {
+  const hint =
+    status === "recording"
+      ? "답변이 끝나면 마이크를 다시 눌러주세요"
+      : status === "processing"
+        ? "음성을 분석하고 있어요"
+        : status === "connecting"
+          ? "마이크를 연결하고 있어요"
+          : "마이크를 눌러 답변을 시작하세요";
+
+  return (
+    <div className="grid place-items-center py-2">
+      <MicButton
+        size="sm"
+        showCaption={false}
+        status={status}
+        volume={volume}
+        onToggle={onToggle}
+        disabled={disabled}
+      />
+      <p className="mt-4 text-xs text-fg-subtle font-mono uppercase tracking-wider">
+        {hint}
+      </p>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// 입력 패널 — 텍스트 모드
+// ─────────────────────────────────────────────────────────────
+function TextInputPanel({
+  value,
+  onChange,
+  onSubmit,
+  onKeyDown,
+  disabled,
+  isPending,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  disabled: boolean;
+  isPending: boolean;
+}) {
+  return (
+    <div className="space-y-3">
+      <Textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder="답변을 입력해주세요. (Cmd/Ctrl + Enter로 전송)"
+        rows={4}
+        disabled={disabled}
+        className="min-h-[112px]"
+      />
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-mono uppercase tracking-wider text-fg-subtle">
+          {isPending ? "전송 중" : "Cmd / Ctrl + Enter"}
+        </p>
+        <Button
+          onClick={onSubmit}
+          disabled={!value.trim() || disabled}
+          size="md"
+        >
+          {isPending ? "전송 중..." : "전송"}
+        </Button>
+      </div>
+    </div>
   );
 }

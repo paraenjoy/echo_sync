@@ -3,34 +3,63 @@
  *
  * UX:
  *  - 단순 스피너 대신 "결과 카드 구조"를 미리 그려 인지 부하 감소
- *  - 단계별 진행 메시지 (typing 효과로 자연스럽게)
- *  - 백엔드가 status flag를 안 보내도 시간 경과로 자동 전환
+ *  - 단계별 진행 메시지 (typing 효과)
+ *
+ * 단계 동기화 (BACKEND_PR.md TODO #4 ✅):
+ *  - `stage` prop이 주어지면 서버 WS 단계(asr→scoring→coaching)로 헤드라인을 정확히 동기화.
+ *  - `stage`가 생략되면(예: 질문 생성 대기처럼 WS 단계가 없는 흐름) 기존처럼 시간 기반으로 추정.
  *
  * 사용처:
- *  - /youtube, /interview/room — useAudioStreamer.status === "processing" 시 노출
- *
- * TODO (Backend): Send status flags before final data
- *   - "processing" 플래그 도착 시 stage를 더 정확히 동기화
- *     (현재는 시간 기반 추정으로 가까이 흉내)
+ *  - /youtube, /interview/room 음성 분석: <ProcessingSkeleton stage={audio.stage} />
+ *  - /youtube 질문 생성 대기: <ProcessingSkeleton />   // prop 없음 → 시간 기반 폴백
  */
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import type { WsStage } from "@/types/ws";
 
-const STAGES = [
-  { at: 0,    text: "음성을 전송하고 있어요" },
-  { at: 1200, text: "발음을 인식하고 있어요" },
-  { at: 3000, text: "AI가 코칭 피드백을 작성하고 있어요" },
+interface ProcessingSkeletonProps {
+  /**
+   * 서버 처리 단계.
+   *  - WsStage 지정: 실 단계로 동기화 (시간 추정 미사용)
+   *  - null:         단계 흐름이나 아직 첫 status 미수신 → "전송 중"
+   *  - 생략(undefined): 단계가 없는 흐름 → 시간 기반 추정 폴백
+   */
+  stage?: WsStage | null;
+}
+
+/** 실 WS 단계 → 헤드라인 */
+const STAGE_TEXT: Record<WsStage, string> = {
+  asr: "음성을 인식하고 있어요",
+  scoring: "발음을 채점하고 있어요",
+  coaching: "AI가 코칭 피드백을 작성하고 있어요",
+};
+
+/** stage가 없는 흐름용 시간 기반 폴백 (기존 동작 유지) */
+const TIMED_STAGES = [
+  "음성을 전송하고 있어요",
+  "발음을 인식하고 있어요",
+  "AI가 코칭 피드백을 작성하고 있어요",
 ] as const;
+const TIMED_DELAYS = [0, 1200, 3000];
 
-export function ProcessingSkeleton() {
-  const [stageIdx, setStageIdx] = useState(0);
+export function ProcessingSkeleton({ stage }: ProcessingSkeletonProps = {}) {
+  // stage prop 자체가 전달됐는지로 "단계 추적 흐름"을 구분 (null도 추적 흐름)
+  const usesRealStage = stage !== undefined;
+  const [timedIdx, setTimedIdx] = useState(0);
 
   useEffect(() => {
-    const timers = STAGES.slice(1).map((stage, i) =>
-      setTimeout(() => setStageIdx(i + 1), stage.at)
+    if (usesRealStage) return; // 실 단계 흐름에선 타이머 미사용
+    const timers = TIMED_DELAYS.slice(1).map((delay, i) =>
+      setTimeout(() => setTimedIdx(i + 1), delay)
     );
     return () => timers.forEach(clearTimeout);
-  }, []);
+  }, [usesRealStage]);
+
+  const headline = usesRealStage
+    ? stage
+      ? STAGE_TEXT[stage]
+      : "음성을 전송하고 있어요"
+    : TIMED_STAGES[timedIdx];
 
   return (
     <section
@@ -45,7 +74,7 @@ export function ProcessingSkeleton() {
           <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-accent" />
         </span>
         <p className="font-display text-lg tracking-tight">
-          {STAGES[stageIdx].text}
+          {headline}
           <TypingDots />
         </p>
       </div>

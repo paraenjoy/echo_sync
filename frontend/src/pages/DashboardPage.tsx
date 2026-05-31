@@ -1,24 +1,37 @@
 /**
- * DashboardPage (/) — Step 5 정식 구현
+ * DashboardPage (/)
  *
  * 책임:
- *  - 누적 발음 분석 (GET /cumulative-analysis/{user_id}) 시각화
- *      · 정상: weak_phonemes 히트맵 + ai_analysis 텍스트
- *      · 데이터 부족: summary 빈 상태 + 첫 연습 CTA
- *  - 사용자 환영 헤더 (닉네임)
- *  - 주요 기능으로의 빠른 진입 카드 (YouTube / Interview / History)
+ *  - 학습 분석 대시보드 (GET /dashboard): 목표 달성률 · 최신 페르소나 · 점수 추이
+ *  - 맞춤 학습 추천 (GET /recommendations)
+ *  - 누적 발음 분석 (GET /cumulative-analysis/{user_id}): weak_phonemes 히트맵 + ai_analysis
+ *  - 사용자 환영 헤더 + 주요 기능 빠른 진입 카드 (YouTube / Interview / History)
+ *
+ * 상태 분리(HANDOFF): 사용자/토큰은 Zustand(authStore), 서버 데이터는 React Query.
  */
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { useCumulativeAnalysis } from "@/hooks/queries/useCumulativeAnalysis";
+import { useDashboard } from "@/hooks/queries/useDashboard";
+import { useRecommendations } from "@/hooks/queries/useRecommendations";
 import { ProcessingSkeleton } from "@/components/common/ProcessingSkeleton";
 import { UserMenu } from "@/components/common/UserMenu";
 import { PhonemeHeatmap } from "@/components/features/dashboard/PhonemeHeatmap";
+import { GoalProgressWidget } from "@/components/features/dashboard/GoalProgressWidget";
+import { GoalSettingModal } from "@/components/features/dashboard/GoalSettingModal";
+import { PersonaCard } from "@/components/features/dashboard/PersonaCard";
+import { ScoreTrendChart } from "@/components/features/dashboard/ScoreTrendChart";
+import { RecommendationsPanel } from "@/components/features/dashboard/RecommendationsPanel";
 import { getErrorMessage } from "@/lib/api";
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
   const analysisQuery = useCumulativeAnalysis(user?.id ?? null);
+  const dashboardQuery = useDashboard();
+  const recommendationsQuery = useRecommendations();
+
+  const [goalModalOpen, setGoalModalOpen] = useState(false);
 
   const displayName =
     user?.nickname?.trim() ||
@@ -47,6 +60,60 @@ export default function DashboardPage() {
             교정해볼까요?
           </p>
         </header>
+
+        {/* ── 목표 / 달성률 ─────────────────────────────────── */}
+        <section className="mb-16">
+          <SectionHeader eyebrow="Goal" title="목표 달성률" />
+
+          {dashboardQuery.isPending && <ProcessingSkeleton />}
+
+          {dashboardQuery.isError && (
+            <div className="p-4 rounded-md bg-score-low/10 border border-score-low/30 text-sm text-score-low">
+              {getErrorMessage(dashboardQuery.error)}
+            </div>
+          )}
+
+          {dashboardQuery.isSuccess && (
+            <GoalProgressWidget
+              goal={dashboardQuery.data.goal}
+              progress={dashboardQuery.data.goal_progress}
+              onEdit={() => setGoalModalOpen(true)}
+            />
+          )}
+        </section>
+
+        {/* ── 최신 페르소나 (면접 완료 시) ──────────────────── */}
+        {dashboardQuery.data?.latest_persona && (
+          <section className="mb-16">
+            <SectionHeader eyebrow="Persona" title="최신 페르소나" />
+            <PersonaCard persona={dashboardQuery.data.latest_persona} />
+          </section>
+        )}
+
+        {/* ── 점수 추이 ─────────────────────────────────────── */}
+        {dashboardQuery.isSuccess && (
+          <section className="mb-16">
+            <SectionHeader eyebrow="Trend" title="점수 추이" />
+            <ScoreTrendChart data={dashboardQuery.data.recent_scores} />
+          </section>
+        )}
+
+        {/* ── 맞춤 추천 ─────────────────────────────────────── */}
+        <section className="mb-16">
+          <SectionHeader eyebrow="For you" title="맞춤 학습 추천" />
+
+          {recommendationsQuery.isPending && <ProcessingSkeleton />}
+
+          {recommendationsQuery.isError && (
+            <div className="p-4 rounded-md bg-score-low/10 border border-score-low/30 text-sm text-score-low">
+              {getErrorMessage(recommendationsQuery.error)}
+            </div>
+          )}
+
+          {recommendationsQuery.isSuccess && (
+            <RecommendationsPanel data={recommendationsQuery.data} />
+          )}
+        </section>
 
         {/* ── 누적 분석 섹션 ────────────────────────────────── */}
         <section className="mb-16">
@@ -96,6 +163,13 @@ export default function DashboardPage() {
           </nav>
         </section>
       </div>
+
+      {/* 목표 설정/수정 모달 (open-gated) */}
+      <GoalSettingModal
+        open={goalModalOpen}
+        onClose={() => setGoalModalOpen(false)}
+        initialGoal={dashboardQuery.data?.goal ?? null}
+      />
     </main>
   );
 }

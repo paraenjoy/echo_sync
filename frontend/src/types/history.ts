@@ -86,11 +86,11 @@ export interface HistorySession {
 
 export interface HistoryResponse {
   history: HistorySession[];
+  total: number;       // 전체 세션 수 (BACKEND_PR.md TODO #1 ✅)
+  has_more: boolean;   // 다음 페이지 존재 여부
 }
 
 // 페이지네이션 파라미터
-// TODO (Backend): Add limit/offset to GET /history (BACKEND_PR.md TODO #1)
-// 현재 백엔드는 전체 목록을 반환하므로, 프론트에서 클라이언트 측 슬라이싱으로 임시 대응
 export interface HistoryParams {
   limit?: number;
   offset?: number;

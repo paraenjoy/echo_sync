@@ -4,7 +4,7 @@
  * 책임:
  *  - 마이크 권한 요청 및 16kHz 모노 PCM 캡처
  *  - WebSocket(/ws/audio)으로 Int16 PCM 바이너리 스트리밍
- *  - 답변 종료 시 JSON 컨트롤 메시지 송신 → 서버 최종 결과 수신
+ *  - 답변 종료 시 JSON 컨트롤 메시지 송신 → 서버 처리 단계(status) 및 최종 결과 수신
  *  - 음량(RMS) 계산하여 마이크 버튼 주변 시각화 데이터 노출
  *  - 모든 리소스(AudioContext, Stream, Socket) 안전한 해제
  *
@@ -12,10 +12,10 @@
  *  - /youtube (스피킹 연습)
  *  - /interview/room (음성 답변)
  *
- * 백엔드 계약 (main.py /ws/audio):
+ * 백엔드 계약 (main.py /ws/audio, BACKEND_PR.md TODO #4):
  *  - 쿼리: ?token={JWT}&session_id={n}&question_id={n}
  *  - 송신: ArrayBuffer (Int16 PCM) → 종료 시 JSON {type:"stop", session_id, question_id, question}
- *  - 수신: WsFinalResult JSON (1회)
+ *  - 수신: { type:"status", stage:"asr"|"scoring"|"coaching" } (처리 단계) → { type:"final", ... } (최종 1회)
  *
  * NOTE: ScriptProcessorNode는 deprecated이지만 백엔드 계약(Int16 PCM 16kHz)을
  *       만족하려면 AudioWorklet 마이그레이션 시 별도 작업이 필요하다.
@@ -27,7 +27,7 @@ import { useAuthStore } from "@/store/authStore";
 import type {
   WsFinalResult,
   WsClientMessage,
-  WsStatus,
+  WsStage,
 } from "@/types/ws";
 import { isFinalResult, isStatusMessage } from "@/types/ws";
 
@@ -37,8 +37,8 @@ import { isFinalResult, isStatusMessage } from "@/types/ws";
  * 훅의 상태 머신
  * - idle:         초기 상태 / 정리 완료
  * - connecting:   getUserMedia + WS 연결 진행 중
- * - recording:    오디오 스트리밍 중 (서버가 listening)
- * - processing:   stop 송신 후 서버 분석 대기 (서버가 processing)
+ * - recording:    오디오 스트리밍 중
+ * - processing:   stop 송신 후 서버 분석 대기 (서버 stage: asr → scoring → coaching)
  * - completed:    최종 결과 수신 완료
  * - error:        예외 발생
  */
@@ -76,6 +76,8 @@ export interface StartParams {
 
 export interface UseAudioStreamerReturn {
   status: StreamerStatus;
+  /** 서버 처리 단계 (status==="processing" 동안 asr→scoring→coaching). 없으면 null */
+  stage: WsStage | null;
   /** 0.0 ~ 1.0 정규화된 RMS 음량 (마이크 시각화용) */
   volume: number;
   /** 서버 최종 분석 결과 (completed 시점에 채워짐) */
@@ -145,6 +147,7 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
 
   // ---------- 공개 상태 ----------
   const [status, setStatus] = useState<StreamerStatus>("idle");
+  const [stage, setStage] = useState<WsStage | null>(null);
   const [volume, setVolume] = useState(0);
   const [result, setResult] = useState<WsFinalResult | null>(null);
   const [error, setError] = useState<StreamerError | null>(null);
@@ -288,6 +291,7 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
       safeSet(setError, null);
       safeSet(setResult, null);
       safeSet(setLocalAudioUrl, null);
+      safeSet(setStage, null);
       safeSet(setStatus, "connecting");
 
       // ---------- 1) 마이크 권한 ----------
@@ -421,13 +425,12 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
         try {
           const data: unknown = JSON.parse(event.data as string);
 
-          // 1) 미래 호환: 서버가 status flag를 보내는 경우
-          // TODO (Backend): Send status flags before final data
+          // 1) 서버 처리 단계 메시지 (BACKEND_PR.md TODO #4 ✅)
+          //    { type: "status", stage: "asr" | "scoring" | "coaching" }
+          //    어떤 stage든 분석이 시작된 것이므로 processing 상태로 두고 stage만 갱신한다.
           if (isStatusMessage(data)) {
-            const s = data.status as WsStatus;
-            if (s === "listening") safeSet(setStatus, "recording");
-            else if (s === "processing") safeSet(setStatus, "processing");
-            // "completed"는 최종 결과와 함께 오므로 별도 처리 불필요
+            safeSet(setStatus, "processing");
+            safeSet(setStage, data.stage);
             return;
           }
 
@@ -547,12 +550,14 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
     safeSet(setError, null);
     safeSet(setVolume, 0);
     safeSet(setStatus, "idle");
+    safeSet(setStage, null);
     currentParamsRef.current = null;
     localChunksRef.current = [];
   }, [cleanup, localAudioUrl, safeSet]);
 
   return {
     status,
+    stage,
     volume,
     result,
     error,
