@@ -33,6 +33,7 @@ import type {
 // ─────────────────────────────────────────────────────────────
 export const interviewMutationKeys = {
   start: ["interview", "start"] as const,
+  finalize: ["interview", "finalize"] as const,
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -127,6 +128,7 @@ export function useStartInterview() {
 export function useFinalizeInterview() {
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: interviewMutationKeys.finalize,
     mutationFn: async (sessionId: number) => {
       const form = new FormData();
       // FastAPI Form(int)은 문자열도 캐스팅하지만 명시적으로 String() 변환.
