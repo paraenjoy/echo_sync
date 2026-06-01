@@ -20,11 +20,12 @@
  *  - axios 인터셉터(api.ts)가 FastAPI 에러를 정규화하므로 onError에서는 getErrorMessage 사용
  *  - start-unified는 200 + { status:"error", message } 케이스가 있어 추가 가드
  */
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type {
   InterviewSetupInput,
   InterviewStartResponse,
+  PersonaReportResponse,
 } from "@/types/interview";
 
 // ─────────────────────────────────────────────────────────────
@@ -90,5 +91,56 @@ export function useStartInterview() {
   return useMutation({
     mutationKey: interviewMutationKeys.start,
     mutationFn: startInterview,
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// 2) useFinalizeInterview — 면접 종료 → 동물 페르소나 리포트 생성 (FormData)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * POST /interview/finalize (FormData: session_id) — 동물 페르소나 리포트 생성 (무거운 AI 호출)
+ *
+ * - Gemini 동물 페르소나 분석 + 이미지 생성 + 총평/스택 비중 산출 → 수 초 소요.
+ *   페이지에서 ProcessingSkeleton 오버레이로 마스킹할 것.
+ *
+ * 200 + status:"error" 응답 처리:
+ *  - 답변 데이터 부족 시 백엔드는 throw 하지 않고 200으로 status:"error" + animal_reason
+ *    (사유 문자열)을 돌려준다.
+ *  - 여기서 throw 하지 않고 그대로 반환 → 페이지의 onSuccess에서 `data.status === "error"`
+ *    를 검사해 animal_reason을 그대로 노출. (useStartInterview는 onError로 빼는 게 자연스러워
+ *    다르게 처리한 것 — 비대칭은 의도된 것)
+ *
+ * 캐시 무효화:
+ *  - 성공 시 ["history"] 루트 무효화 → useHistory 목록·useHistorySession 상세가 함께 재요청.
+ *    새 리포트(interview_report)가 히스토리 상세 진입 즉시 반영되도록 보장.
+ *
+ * 사용 예:
+ *   const finalize = useFinalizeInterview();
+ *   finalize.mutate(sessionId, {
+ *     onSuccess: (data) => {
+ *       if (data.status === "error" || !data.session_id) return; // animal_reason 노출
+ *       navigate(`/history/${sessionId}`);
+ *     },
+ *   });
+ */
+export function useFinalizeInterview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (sessionId: number) => {
+      const form = new FormData();
+      // FastAPI Form(int)은 문자열도 캐스팅하지만 명시적으로 String() 변환.
+      form.append("session_id", String(sessionId));
+
+      // FormData 전송 — Content-Type 명시 금지(axios 자동 boundary).
+      const { data } = await api.post<PersonaReportResponse>(
+        "/interview/finalize",
+        form
+      );
+      return data;
+    },
+    // 새 리포트가 히스토리 목록·상세에 즉시 보이도록 무효화
+    // (historyQueryKeys.list / historyDetailQueryKeys.detail 둘 다 "history" 루트를 공유)
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["history"] }),
   });
 }

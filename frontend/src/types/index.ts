@@ -7,3 +7,4 @@ export * from "./ws";
 export * from "./youtube";
 export * from "./interview";
 export * from "./history";
+export * from "./dashboard";

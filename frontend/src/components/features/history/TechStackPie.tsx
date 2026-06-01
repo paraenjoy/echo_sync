@@ -5,22 +5,17 @@
  *
  * 색상(DESIGN_SYSTEM.md): 카테고리형이지만 단일 accent 원칙을 지켜
  *   accent 단색의 불투명도 단계로 슬라이스를 구분하고, 범례(이름·%)가 식별을 보장한다.
- * 토큰은 채널 형식이라 getComputedStyle로 읽어 rgb()로 주입, 테마 전환에 MutationObserver로 반응.
+ *
+ * 차트 색 주입:
+ *  - 토큰은 채널 형식이라 SVG에는 var()가 안 먹는다.
+ *  - `lib/chartTokens.ts`의 `useChartTokens`가 채널→rgb 변환과 테마 전환 추적을 담당.
+ *    (이전엔 본 파일과 ScoreTrendChart에 동일 로직이 중복되어 있었음 — HANDOFF TODO 해소.)
  */
-import { useEffect, useState } from "react";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
+import { useChartTokens } from "@/lib/chartTokens";
 
 interface TechStackPieProps {
   data: Record<string, number>;
-}
-
-function readColor(varName: string): string {
-  if (typeof window === "undefined") return "";
-  const raw = getComputedStyle(document.documentElement)
-    .getPropertyValue(varName)
-    .trim();
-  if (!raw) return "";
-  return /^[\d.\s]+$/.test(raw) ? `rgb(${raw})` : raw;
 }
 
 // 슬라이스 불투명도 (큰 비중일수록 진하게)
@@ -32,18 +27,7 @@ interface TooltipItem {
 }
 
 export function TechStackPie({ data }: TechStackPieProps) {
-  const [accent, setAccent] = useState(() => readColor("--accent"));
-
-  useEffect(() => {
-    const compute = () => setAccent(readColor("--accent"));
-    compute();
-    const obs = new MutationObserver(compute);
-    obs.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class", "data-theme", "style"],
-    });
-    return () => obs.disconnect();
-  }, []);
+  const { accent } = useChartTokens({ accent: "--accent" });
 
   const entries = Object.entries(data)
     .filter(([, v]) => v > 0)

@@ -135,11 +135,6 @@ export default function InterviewRoomPage() {
   // useEffect가 result 객체 변화로 재실행될 때 같은 결과를 두 번 반영하지 않도록 가드
   const handledResultRef = useRef<WsFinalResult | null>(null);
 
-  // ── 메시지 헬퍼 ───────────────────────────────────────────
-  const appendMessage = useCallback((msg: ChatMessage) => {
-    setMessages((prev) => [...prev, msg]);
-  }, []);
-
   // ── 음성 모드: 결과 도착 → WS final의 꼬리질문으로 진행 ───────
   useEffect(() => {
     if (audio.status !== "completed" || !audio.result) return;
@@ -152,17 +147,25 @@ export default function InterviewRoomPage() {
 
     // 빈 transcript = STT 인식 실패 → 에러 안내 후 reset (다시 답변 가능)
     if (!transcript || !transcript.trim()) {
-      appendMessage({
-        kind: "error",
-        id: genId(),
-        message: "답변이 인식되지 않았어요. 마이크 가까이에서 다시 말해주세요.",
-      });
+      setMessages((prev) => [
+        ...prev,
+        {
+          kind: "error",
+          id: genId(),
+          message:
+            "답변이 인식되지 않았어요. 마이크 가까이에서 다시 말해주세요.",
+        },
+      ]);
       audio.reset();
       handledResultRef.current = null;
       return;
     }
 
     // 백엔드(/ws/audio)가 final에 동봉한 다음 꼬리질문
+    //  - 현 백엔드(interview_manager.generate_follow_up)는 짧은/정상 답변 모두 항상
+    //    질문을 반환하므로 hasFollowUp === false 분기는 사실상 도달하지 않는다.
+    //  - 다만 백엔드 정책 변경 시 채팅이 무응답으로 멈추는 것을 막기 위한 안전망으로
+    //    error 카드를 보여주는 분기를 유지한다. (제거 금지 — 회귀 방지 목적)
     const nextQuestion = result.next_question;
     const nextQuestionId = result.next_question_id;
     const hasFollowUp =

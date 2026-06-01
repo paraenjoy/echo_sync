@@ -9,12 +9,12 @@
  *  - 점수 3색(low/mid/high)은 "티어" 전용이라 시리즈 구분에 쓰면 의미가 왜곡된다.
  *  - 단일 accent 원칙 안에서: 발음=accent(목표 추적 지표라 강조), 정확도=fg-muted, 유창성=fg-subtle.
  *
- * Recharts 색 주입:
- *  - 토큰은 alpha 지원을 위해 채널 형식("91 133 218")으로 저장된다.
- *  - SVG 속성엔 var()가 해석되지 않으므로 getComputedStyle로 읽어 rgb(...)로 래핑해 전달.
- *  - 다크/라이트 전환 시 :root의 class/style이 바뀌므로 MutationObserver로 재계산(themeStore 비결합).
+ * 차트 색 주입:
+ *  - 토큰은 채널 형식("91 133 218")이라 SVG에는 var()가 안 먹는다.
+ *  - `lib/chartTokens.ts`의 `useChartTokens`가 채널→rgb 변환과 테마 전환 추적을 담당.
+ *    (이전엔 본 파일과 TechStackPie에 동일 로직이 중복되어 있었음 — HANDOFF TODO 해소.)
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -25,52 +25,10 @@ import {
   Tooltip,
 } from "recharts";
 import type { RecentScore } from "@/types/dashboard";
+import { useChartTokens } from "@/lib/chartTokens";
 
 interface ScoreTrendChartProps {
   data: RecentScore[];
-}
-
-// ── 토큰 색 읽기 (채널 → rgb) ──────────────────────────────
-function readColor(varName: string): string {
-  if (typeof window === "undefined") return "";
-  const raw = getComputedStyle(document.documentElement)
-    .getPropertyValue(varName)
-    .trim();
-  if (!raw) return "";
-  // "91 133 218" 형태면 rgb()로, 이미 색 문자열이면 그대로
-  return /^[\d.\s]+$/.test(raw) ? `rgb(${raw})` : raw;
-}
-
-interface ChartColors {
-  pronunciation: string;
-  accuracy: string;
-  fluency: string;
-  grid: string;
-  axis: string;
-}
-
-function useChartColors(): ChartColors {
-  const compute = (): ChartColors => ({
-    pronunciation: readColor("--accent"),
-    accuracy: readColor("--fg-muted"),
-    fluency: readColor("--fg-subtle"),
-    grid: readColor("--border"),
-    axis: readColor("--fg-subtle"),
-  });
-
-  const [colors, setColors] = useState<ChartColors>(compute);
-
-  useEffect(() => {
-    setColors(compute());
-    const obs = new MutationObserver(() => setColors(compute()));
-    obs.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class", "data-theme", "style"],
-    });
-    return () => obs.disconnect();
-  }, []);
-
-  return colors;
 }
 
 // ── 날짜 라벨 ("M/D") — str(datetime)의 공백 구분자도 안전 파싱 ──
@@ -87,7 +45,14 @@ const SERIES = [
 ] as const;
 
 export function ScoreTrendChart({ data }: ScoreTrendChartProps) {
-  const colors = useChartColors();
+  // 디자인 토큰 5종을 한 번에 읽고, 테마 전환에 자동 반응.
+  const colors = useChartTokens({
+    pronunciation: "--accent",
+    accuracy: "--fg-muted",
+    fluency: "--fg-subtle",
+    grid: "--border",
+    axis: "--fg-subtle",
+  });
 
   const chartData = useMemo(
     () =>
