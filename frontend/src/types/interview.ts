@@ -1,6 +1,8 @@
 /**
  * 면접 연습 관련 타입
- * - 백엔드 main.py의 /interview/start-unified (FormData) 및 /interview/answer와 미러링
+ * - 백엔드 main.py의 /interview/start-unified (FormData) / /interview/finalize와 미러링.
+ *   (POST /interview/answer는 백엔드에 존재하지 않음 — 꼬리질문은 /ws/audio final의
+ *    next_question 으로 수신. types/ws.ts의 WsFinalResult 참조.)
  *
  * 정정 이력 (Step 7):
  *  - 페르소나 리포트 생성 엔드포인트(POST /interview/finalize, FormData: session_id)의
@@ -27,21 +29,6 @@ export interface InterviewStartResponse {
   question_id: number;
   question: string;
   message?: string; // 에러 시
-}
-
-// 꼬리질문 요청 (POST /interview/answer)
-export interface InterviewAnswerRequest {
-  session_id: number;
-  current_question_id: number;
-  current_question: string;
-  user_answer: string;
-}
-
-// 꼬리질문 응답
-export interface InterviewAnswerResponse {
-  follow_up: string;
-  next_question_id: number;
-  status: "continue" | "end";
 }
 
 // ─────────────────────────────────────────────────────────────

@@ -114,10 +114,13 @@ export function GoalProgressWidget({
             aria-label="주간 연습 달성률"
           >
             <div
-              className={`h-full rounded-sm transition-[width] duration-500 ${
-                weeklyMet ? "bg-score-high" : "bg-accent"
-              }`}
-              style={{ width: `${weeklyPct}%` }}
+              className="h-full rounded-sm transition-[width] duration-500"
+              style={{
+                width: `${weeklyPct}%`,
+                backgroundColor: weeklyMet
+                  ? "rgb(var(--score-high))"
+                  : "rgb(var(--accent))",
+              }}
             />
           </div>
         ) : (

@@ -1,62 +1,48 @@
 /**
- * InterviewRoomPage (/interview/room) — 완성본
+ * InterviewRoomPage (/interview/room) — 음성 전용 완성본
  *
  * 책임:
- *  - AI 면접관과의 멀티턴 대화 진행
- *  - 음성 모드: useAudioStreamer로 답변 → 결과 transcript을 자동으로 답변 제출
- *  - 텍스트 모드: Textarea로 답변 → useSubmitAnswer 호출
- *  - 각 턴: 사용자 답변 → 꼬리질문 → 다시 답변 → ...
- *  - 종료(status === "end" 또는 사용자 종료) → useFinalizeInterview로 동물 페르소나 리포트
- *    생성 → 히스토리 상세(/history/{id})로 이동 (Step 9, Implementation.md §2-C)
+ *  - AI 면접관과의 멀티턴 음성 대화 진행
+ *  - useAudioStreamer로 답변을 녹음하면, 백엔드 /ws/audio가 채점·코칭과 함께
+ *    다음 꼬리질문을 final 메시지(next_question / next_question_id)로 반환한다.
+ *    프론트는 그 값을 그대로 다음 턴으로 사용한다(별도 REST 호출 없음).
+ *  - 종료는 사용자 주도(면접 종료 버튼) → useFinalizeInterview로 동물 페르소나
+ *    리포트 생성 → 히스토리 상세(/history/{id})로 이동.
+ *
+ * 백엔드 계약 메모(검증 완료):
+ *  - POST /interview/answer 는 백엔드에 존재하지 않는다. 꼬리질문은 /ws/audio
+ *    final 전용이며, interview_manager.generate_follow_up은 항상 질문을 반환하므로
+ *    백엔드발 자동 종료 신호(status 등)도 없다 → 종료는 전적으로 사용자 결정.
+ *  - 직전 답변 피드백(점수·WordHeatmap·코칭·오디오)은 UserVoiceBubble이 다음 질문
+ *    직전에 그대로 표시하므로 별도 누적/이벤트가 필요 없다.
+ *
+ * 핵심 흐름:
+ *   마이크 클릭 → audio.start() → 녹음 → 재클릭 → audio.stop()
+ *   → 서버 분석(asr→scoring→coaching) → audio.status==="completed" 도달 시
+ *     1. user-voice 카드 + WS final의 next_question을 messages에 한 번에 push
+ *     2. currentQuestion/Id를 꼬리질문으로 갱신, audio.reset()
+ *   "면접 종료" → 종료 패널 → finalize.mutate(sessionId)
+ *     → 로딩 오버레이(ProcessingSkeleton) → onSuccess navigate(/history/{id})
  *
  * 라우터 state 의존:
  *  - Setup에서 navigate state로 sessionId, questionId, firstQuestion,
  *    position, interviewMode 전달
  *  - state 없으면 (URL 직접 입력, 새로고침 등) Setup으로 redirect
- *
- * 직전 답변 피드백:
- *  - 음성 답변의 WsFinalResult(점수·WordHeatmap·코칭·오디오)는 UserVoiceBubble이
- *    다음 질문 직전에 그대로 표시하므로 별도 누적/이벤트가 필요 없다.
- *
- * 핵심 흐름:
- *
- *   [음성 모드]
- *     사용자 클릭 → audio.start() → 녹음 중
- *     사용자 재클릭 → audio.stop() → 서버 분석 대기(asr→scoring→coaching)
- *     audio.status === "completed" 도달 →
- *       1. messages에 user-voice + processing 추가
- *       2. submitMutation.mutate(transcript)
- *       3. audio.reset()
- *     submitMutation.onSuccess →
- *       1. processing 제거 + 새 question 추가
- *       2. status === "end"면 ended=true (종료 패널), 아니면 currentQuestion/Id 갱신
- *
- *   [텍스트 모드]
- *     사용자 입력 + 전송 → user-text + processing 추가 → mutate → onSuccess(위와 동일)
- *
- *   [종료]
- *     종료 패널 "결과 리포트 보기" 또는 헤더 종료 → finalize.mutate(sessionId)
- *       → 로딩 오버레이(ProcessingSkeleton) → onSuccess navigate(/history/{id})
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { MicButton } from "@/components/common/MicButton";
 import { ErrorModal } from "@/components/common/ErrorModal";
 import { ProcessingSkeleton } from "@/components/common/ProcessingSkeleton";
 import { WordHeatmap } from "@/components/features/youtube/WordHeatmap";
 import { useAudioStreamer } from "@/hooks/useAudioStreamer";
-import {
-  useSubmitAnswer,
-  useFinalizeInterview,
-} from "@/hooks/queries/useInterviewMutations";
+import { useFinalizeInterview } from "@/hooks/queries/useInterviewMutations";
 import { getErrorMessage } from "@/lib/api";
 import { cn, getScoreTier, scoreTierClasses } from "@/lib/utils";
 import { ScoreDisplay } from "@/components/common/ScoreDisplay";
 import { AudioPlayer } from "@/components/common/AudioPlayer";
 import type { WsFinalResult } from "@/types/ws";
-import type { InterviewAnswerResponse } from "@/types/interview";
 
 // ─────────────────────────────────────────────────────────────
 // 라우터 state 모델 (Setup → Room으로 전달)
@@ -82,11 +68,10 @@ function isValidRoomState(s: unknown): s is RoomLocationState {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 채팅 메시지 모델
+// 채팅 메시지 모델 (음성 전용)
 // ─────────────────────────────────────────────────────────────
 export type ChatMessage =
   | { kind: "question"; id: string; questionId: number; text: string }
-  | { kind: "user-text"; id: string; text: string }
   | {
       kind: "user-voice";
       id: string;
@@ -94,10 +79,7 @@ export type ChatMessage =
       result: WsFinalResult;
       localAudioUrl: string | null;
     }
-  | { kind: "processing"; id: string; label?: string }
   | { kind: "error"; id: string; message: string };
-
-type InputMode = "voice" | "text";
 
 const genId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -121,7 +103,6 @@ export default function InterviewRoomPage() {
 
   // ── 훅 ────────────────────────────────────────────────────
   const audio = useAudioStreamer();
-  const submitMutation = useSubmitAnswer();
   const finalize = useFinalizeInterview();
 
   // ── 핵심 상태 ──────────────────────────────────────────────
@@ -136,10 +117,8 @@ export default function InterviewRoomPage() {
   ]);
   const [currentQuestionId, setCurrentQuestionId] = useState(state.questionId);
   const [currentQuestion, setCurrentQuestion] = useState(state.firstQuestion);
-  const [mode, setMode] = useState<InputMode>("voice");
-  const [textAnswer, setTextAnswer] = useState("");
 
-  // 면접 종료 여부 (백엔드 status==="end" 또는 사용자 종료)
+  // 면접 종료 여부 (백엔드 자동 종료 없음 → 사용자 종료 버튼으로만 true)
   const [ended, setEnded] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
 
@@ -152,135 +131,84 @@ export default function InterviewRoomPage() {
     });
   }, [messages]);
 
-  // ── processing 추적 ───────────────────────────────────────
-  // mutation 종료 시 제거하기 위한 ID. ref라 state 갱신을 트리거하지 않음.
-  const processingIdRef = useRef<string | null>(null);
-
-  // ── 음성 결과 중복 제출 방지 ────────────────────────────────
-  // useEffect가 result 객체 변화로 재실행될 때 같은 결과를 두 번 보내지 않도록 가드
-  const submittedResultRef = useRef<WsFinalResult | null>(null);
+  // ── 음성 결과 중복 처리 방지 ────────────────────────────────
+  // useEffect가 result 객체 변화로 재실행될 때 같은 결과를 두 번 반영하지 않도록 가드
+  const handledResultRef = useRef<WsFinalResult | null>(null);
 
   // ── 메시지 헬퍼 ───────────────────────────────────────────
   const appendMessage = useCallback((msg: ChatMessage) => {
     setMessages((prev) => [...prev, msg]);
   }, []);
 
-  const removeMessage = useCallback((id: string) => {
-    setMessages((prev) => prev.filter((m) => m.id !== id));
-  }, []);
-
-  // ── mutation 콜백 ─────────────────────────────────────────
-  const handleAnswerSuccess = useCallback(
-    (data: InterviewAnswerResponse) => {
-      // 1) processing 자리표시자 제거
-      if (processingIdRef.current) {
-        removeMessage(processingIdRef.current);
-        processingIdRef.current = null;
-      }
-      // 2) 새 질문(또는 종료 멘트) push
-      appendMessage({
-        kind: "question",
-        id: genId(),
-        questionId: data.next_question_id,
-        text: data.follow_up,
-      });
-      // 3) 종료 신호면 입력을 닫고 종료 패널로, 아니면 현재 질문 갱신
-      if (data.status === "end") {
-        setEnded(true);
-      } else {
-        setCurrentQuestion(data.follow_up);
-        setCurrentQuestionId(data.next_question_id);
-      }
-    },
-    [appendMessage, removeMessage]
-  );
-
-  const handleAnswerError = useCallback(
-    (err: unknown) => {
-      if (processingIdRef.current) {
-        removeMessage(processingIdRef.current);
-        processingIdRef.current = null;
-      }
-      appendMessage({
-        kind: "error",
-        id: genId(),
-        message: getErrorMessage(err),
-      });
-    },
-    [appendMessage, removeMessage]
-  );
-
-  // ── 답변 제출 (음성/텍스트 공통) ───────────────────────────
-  const submitAnswer = useCallback(
-    (userAnswer: string) => {
-      submitMutation.mutate(
-        {
-          session_id: sessionId,
-          current_question_id: currentQuestionId,
-          current_question: currentQuestion,
-          user_answer: userAnswer,
-        },
-        {
-          onSuccess: handleAnswerSuccess,
-          onError: handleAnswerError,
-        }
-      );
-    },
-    [
-      submitMutation,
-      sessionId,
-      currentQuestionId,
-      currentQuestion,
-      handleAnswerSuccess,
-      handleAnswerError,
-    ]
-  );
-
-  // ── 음성 모드: 결과 도착 → 자동 답변 제출 ───────────────────
+  // ── 음성 모드: 결과 도착 → WS final의 꼬리질문으로 진행 ───────
   useEffect(() => {
     if (audio.status !== "completed" || !audio.result) return;
+    // 같은 result 객체가 반복 감지되는 경우 무시
+    if (handledResultRef.current === audio.result) return;
+    handledResultRef.current = audio.result;
 
-    // 중복 트리거 방어: 같은 result 객체가 반복 감지되는 경우 무시
-    if (submittedResultRef.current === audio.result) return;
-    submittedResultRef.current = audio.result;
+    const result = audio.result;
+    const transcript = result.user_said;
 
-    const transcript = audio.result.user_said;
-
-    // 빈 transcript는 STT가 인식 실패한 케이스 → 에러 메시지 후 reset
+    // 빈 transcript = STT 인식 실패 → 에러 안내 후 reset (다시 답변 가능)
     if (!transcript || !transcript.trim()) {
       appendMessage({
         kind: "error",
         id: genId(),
-        message:
-          "답변이 인식되지 않았어요. 마이크 가까이에서 다시 말해주세요.",
+        message: "답변이 인식되지 않았어요. 마이크 가까이에서 다시 말해주세요.",
       });
       audio.reset();
-      submittedResultRef.current = null;
+      handledResultRef.current = null;
       return;
     }
 
-    // 사용자 음성 답변 카드 + processing 자리표시자 push
-    const procId = genId();
+    // 백엔드(/ws/audio)가 final에 동봉한 다음 꼬리질문
+    const nextQuestion = result.next_question;
+    const nextQuestionId = result.next_question_id;
+    const hasFollowUp =
+      typeof nextQuestion === "string" &&
+      nextQuestion.trim().length > 0 &&
+      typeof nextQuestionId === "number";
+
+    // user-voice 카드 + (있으면) 다음 질문을 한 번에 반영
     setMessages((prev) => [
       ...prev,
       {
         kind: "user-voice",
         id: genId(),
         transcript,
-        result: audio.result!,
+        result,
         localAudioUrl: audio.localAudioUrl,
       },
-      { kind: "processing", id: procId, label: "꼬리질문을 만들고 있어요" },
+      ...(hasFollowUp
+        ? [
+            {
+              kind: "question" as const,
+              id: genId(),
+              questionId: nextQuestionId as number,
+              text: nextQuestion as string,
+            },
+          ]
+        : [
+            {
+              kind: "error" as const,
+              id: genId(),
+              message:
+                "다음 질문이 생성되지 않았어요. 다시 답하거나 면접을 종료할 수 있어요.",
+            },
+          ]),
     ]);
-    processingIdRef.current = procId;
 
-    // 백엔드로 답변 전송
-    submitAnswer(transcript);
+    // 다음 답변 대상 질문 갱신 (꼬리질문이 있을 때만)
+    if (hasFollowUp) {
+      setCurrentQuestion(nextQuestion as string);
+      setCurrentQuestionId(nextQuestionId as number);
+    }
 
     // streamer는 다음 답변 위해 idle 상태로 복원
     audio.reset();
-    submittedResultRef.current = null;
-    // ⚠️ deps에 audio 전체를 넣으면 매 렌더 재실행 위험. 안정화된 메서드만 의존.
+    handledResultRef.current = null;
+    // ⚠️ deps에 audio 전체를 넣으면 매 렌더 재실행 위험. 안정화된 값만 의존.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audio.status, audio.result]);
 
@@ -295,41 +223,6 @@ export default function InterviewRoomPage() {
         questionText: currentQuestion,
       });
     }
-  };
-
-  // ── 텍스트 모드: 전송 ──────────────────────────────────────
-  const handleTextSubmit = () => {
-    const trimmed = textAnswer.trim();
-    if (!trimmed || submitMutation.isPending) return;
-
-    const procId = genId();
-    setMessages((prev) => [
-      ...prev,
-      { kind: "user-text", id: genId(), text: trimmed },
-      { kind: "processing", id: procId, label: "꼬리질문을 만들고 있어요" },
-    ]);
-    processingIdRef.current = procId;
-    setTextAnswer("");
-
-    submitAnswer(trimmed);
-  };
-
-  // Cmd/Ctrl + Enter 단축키
-  const handleTextareaKeyDown = (
-    e: React.KeyboardEvent<HTMLTextAreaElement>
-  ) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-      e.preventDefault();
-      handleTextSubmit();
-    }
-  };
-
-  // ── 모드 전환 시 모드 간 잔존물 정리 ─────────────────────────
-  const handleModeChange = (next: InputMode) => {
-    if (next === mode) return;
-    if (next === "text" && audio.status !== "idle") audio.reset();
-    if (next === "voice") setTextAnswer("");
-    setMode(next);
   };
 
   // ── 모드 라벨 ──────────────────────────────────────────────
@@ -362,7 +255,7 @@ export default function InterviewRoomPage() {
     });
   }, [finalize, sessionId, navigate]);
 
-  // 헤더 종료: 진행 중이면 이탈만(리포트 없음), 종료 상태면 동일 흐름
+  // 헤더 종료: 진행 중이면 이탈만(리포트 없음)
   const handleExit = () => {
     if (finalize.isPending) return;
     const ok = window.confirm(
@@ -372,7 +265,9 @@ export default function InterviewRoomPage() {
   };
 
   const questionCount = messages.filter((m) => m.kind === "question").length;
-  const inputDisabled = submitMutation.isPending;
+  // 분석/연결 중에만 마이크·종료 잠금
+  const inputDisabled =
+    audio.status === "processing" || audio.status === "connecting";
 
   return (
     <main className="min-h-dvh bg-bg text-fg flex flex-col">
@@ -426,32 +321,28 @@ export default function InterviewRoomPage() {
             />
           ) : (
             <>
-              {/* 모드 토글 + 질문 카운터 */}
+              {/* 질문 카운터 + 사용자 종료 (백엔드 자동 종료 없음) */}
               <div className="flex items-center justify-between mb-4">
-                <ModeToggle mode={mode} onChange={handleModeChange} />
                 <p className="text-[10px] font-mono uppercase tracking-wider text-fg-subtle tabular-nums">
                   Question #{questionCount}
                 </p>
+                <button
+                  type="button"
+                  onClick={() => setEnded(true)}
+                  disabled={inputDisabled}
+                  className="text-xs font-mono uppercase tracking-wider text-fg-subtle hover:text-accent transition-colors disabled:opacity-50"
+                >
+                  면접 종료 →
+                </button>
               </div>
 
-              {/* 모드별 입력 위젯 */}
-              {mode === "voice" ? (
-                <VoiceInputPanel
-                  status={audio.status}
-                  volume={audio.volume}
-                  onToggle={handleMicToggle}
-                  disabled={inputDisabled}
-                />
-              ) : (
-                <TextInputPanel
-                  value={textAnswer}
-                  onChange={setTextAnswer}
-                  onSubmit={handleTextSubmit}
-                  onKeyDown={handleTextareaKeyDown}
-                  disabled={inputDisabled}
-                  isPending={submitMutation.isPending}
-                />
-              )}
+              {/* 음성 입력 위젯 (음성 전용) */}
+              <VoiceInputPanel
+                status={audio.status}
+                volume={audio.volume}
+                onToggle={handleMicToggle}
+                disabled={inputDisabled}
+              />
             </>
           )}
         </div>
@@ -559,8 +450,6 @@ function ChatMessageView({ message }: { message: ChatMessage }) {
   switch (message.kind) {
     case "question":
       return <QuestionBubble text={message.text} />;
-    case "user-text":
-      return <UserBubble text={message.text} />;
     case "user-voice":
       return (
         <UserVoiceBubble
@@ -569,8 +458,6 @@ function ChatMessageView({ message }: { message: ChatMessage }) {
           localAudioUrl={message.localAudioUrl}
         />
       );
-    case "processing":
-      return <ProcessingBubble label={message.label} />;
     case "error":
       return <ErrorBubble message={message.message} />;
   }
@@ -587,37 +474,6 @@ function QuestionBubble({ text }: { text: string }) {
         AI 면접관
       </p>
       <p className="font-display text-2xl leading-snug text-fg">{text}</p>
-    </div>
-  );
-}
-
-function UserBubble({ text }: { text: string }) {
-  return (
-    <div className="max-w-[88%] ml-auto animate-fade-up">
-      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-fg-subtle mb-2 text-right">
-        내 답변
-      </p>
-      <div className="bg-bg-elevated border border-border rounded-xl rounded-tr-sm px-5 py-4">
-        <p className="text-sm text-fg leading-relaxed whitespace-pre-wrap">
-          {text}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function ProcessingBubble({ label }: { label?: string }) {
-  return (
-    <div className="max-w-[88%] ml-auto animate-fade-up">
-      <div className="bg-bg-elevated border border-border rounded-xl rounded-tr-sm px-5 py-4 flex items-center gap-3">
-        <span className="relative flex h-2 w-2 shrink-0">
-          <span className="absolute inline-flex h-full w-full rounded-full bg-accent opacity-75 animate-ping" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-accent" />
-        </span>
-        <p className="text-sm text-fg-muted">
-          {label ?? "답변을 분석하고 있어요"}
-        </p>
-      </div>
     </div>
   );
 }
@@ -738,61 +594,6 @@ function UserVoiceBubble({
 }
 
 // ─────────────────────────────────────────────────────────────
-// ModeToggle — voice ↔ text 세그먼트 컨트롤
-// ─────────────────────────────────────────────────────────────
-function ModeToggle({
-  mode,
-  onChange,
-}: {
-  mode: InputMode;
-  onChange: (m: InputMode) => void;
-}) {
-  return (
-    <div
-      role="tablist"
-      aria-label="답변 입력 방식"
-      className="inline-flex p-1 rounded-md bg-bg-elevated border border-border"
-    >
-      <ModeToggleButton
-        active={mode === "voice"}
-        onClick={() => onChange("voice")}
-        label="음성"
-      />
-      <ModeToggleButton
-        active={mode === "text"}
-        onClick={() => onChange("text")}
-        label="텍스트"
-      />
-    </div>
-  );
-}
-
-function ModeToggleButton({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      className={cn(
-        "px-3 py-1 text-xs font-mono uppercase tracking-wider rounded-sm transition-colors",
-        active ? "bg-bg-subtle text-fg" : "text-fg-subtle hover:text-fg"
-      )}
-    >
-      {label}
-    </button>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
 // 입력 패널 — 음성 모드
 // ─────────────────────────────────────────────────────────────
 function VoiceInputPanel({
@@ -828,51 +629,6 @@ function VoiceInputPanel({
       <p className="mt-4 text-xs text-fg-subtle font-mono uppercase tracking-wider">
         {hint}
       </p>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// 입력 패널 — 텍스트 모드
-// ─────────────────────────────────────────────────────────────
-function TextInputPanel({
-  value,
-  onChange,
-  onSubmit,
-  onKeyDown,
-  disabled,
-  isPending,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onSubmit: () => void;
-  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
-  disabled: boolean;
-  isPending: boolean;
-}) {
-  return (
-    <div className="space-y-3">
-      <Textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={onKeyDown}
-        placeholder="답변을 입력해주세요. (Cmd/Ctrl + Enter로 전송)"
-        rows={4}
-        disabled={disabled}
-        className="min-h-[112px]"
-      />
-      <div className="flex items-center justify-between">
-        <p className="text-[10px] font-mono uppercase tracking-wider text-fg-subtle">
-          {isPending ? "전송 중" : "Cmd / Ctrl + Enter"}
-        </p>
-        <Button
-          onClick={onSubmit}
-          disabled={!value.trim() || disabled}
-          size="md"
-        >
-          {isPending ? "전송 중..." : "전송"}
-        </Button>
-      </div>
     </div>
   );
 }

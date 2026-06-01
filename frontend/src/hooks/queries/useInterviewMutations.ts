@@ -2,8 +2,8 @@
  * useInterviewMutations — 면접 도메인 뮤테이션 훅 모음
  *
  * 두 개의 뮤테이션을 한 파일에 묶는 이유:
- *  - 면접 플로우는 start → answer → answer → ... 로 강하게 결합되어 있고
- *  - 같은 도메인 타입(types/interview)을 공유한다.
+ *  - 면접 플로우는 start → (음성 답변은 /ws/audio가 꼬리질문까지 반환) → finalize 로
+ *    이어지며, 같은 도메인 타입(types/interview)을 공유한다.
  *  - useGenerateQuestions와 달리 캐싱이 필요 없어 useQuery로 나눌 이유가 없다.
  *
  * 백엔드 계약 (main.py):
@@ -12,10 +12,9 @@
  *      fields: position, tech_stack(JSON string), experience_level,
  *              project_summary, interview_mode, file?(PDF)
  *      → { status, session_id, question_id, question }
- *  - POST /interview/answer
- *      Content-Type: application/json
- *      body: { session_id, current_question_id, current_question, user_answer }
- *      → { follow_up, next_question_id, status }
+ * 
+ *  - 꼬리질문은 REST가 아닌 /ws/audio final(next_question/next_question_id)로 수신한다.
+ *  - POST /interview/finalize (FormData: session_id) → PersonaReportResponse
  *
  * 에러 처리:
  *  - axios 인터셉터(api.ts)가 FastAPI 에러를 정규화하므로 onError에서는 getErrorMessage 사용
@@ -26,8 +25,6 @@ import { api } from "@/lib/api";
 import type {
   InterviewSetupInput,
   InterviewStartResponse,
-  InterviewAnswerRequest,
-  InterviewAnswerResponse,
 } from "@/types/interview";
 
 // ─────────────────────────────────────────────────────────────
@@ -35,7 +32,6 @@ import type {
 // ─────────────────────────────────────────────────────────────
 export const interviewMutationKeys = {
   start: ["interview", "start"] as const,
-  answer: ["interview", "answer"] as const,
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -94,34 +90,5 @@ export function useStartInterview() {
   return useMutation({
     mutationKey: interviewMutationKeys.start,
     mutationFn: startInterview,
-  });
-}
-
-// ─────────────────────────────────────────────────────────────
-// 2) useSubmitAnswer — 답변 제출 → 꼬리질문 수신
-// ─────────────────────────────────────────────────────────────
-
-async function submitAnswer(
-  req: InterviewAnswerRequest
-): Promise<InterviewAnswerResponse> {
-  const res = await api.post<InterviewAnswerResponse>(
-    "/interview/answer",
-    req
-  );
-  return res.data;
-}
-
-/**
- * 답변 제출 뮤테이션
- *  - 음성 모드: useAudioStreamer.result.user_said를 user_answer로 넣어 호출
- *  - 텍스트 모드: textarea 입력을 그대로 user_answer로 넣어 호출
- *
- * onSuccess에서 page-level 채팅 메시지 배열에 follow_up을 추가하고
- * currentQuestion/currentQuestionId를 응답값으로 교체한다.
- */
-export function useSubmitAnswer() {
-  return useMutation({
-    mutationKey: interviewMutationKeys.answer,
-    mutationFn: submitAnswer,
   });
 }

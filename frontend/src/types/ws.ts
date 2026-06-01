@@ -43,6 +43,10 @@ export interface WsSentenceScore {
 /**
  * 최종 분석 결과.
  * - 백엔드가 `type: "final"`로 래핑하지만, 판별은 `user_said` 존재 여부로 한다(하위호환).
+ * - 면접 세션(session_type === "interview")이면 final 메시지에 다음 꼬리질문이
+ *   next_question / next_question_id로 동봉된다(main.py /ws/audio).
+ *   면접 진행은 이 필드로만 이뤄지며, 별도 REST(POST /interview/answer)는 존재하지 않는다.
+ *   YouTube 세션이면 두 필드는 null.
  */
 export interface WsFinalResult {
   type?: "final";
@@ -53,6 +57,12 @@ export interface WsFinalResult {
   user_tts_url: string | null;
   model_tts_url: string | null;
   saved_log_id: number | null;
+  /** 세션 종류. "interview"면 아래 꼬리질문 필드가 채워진다 */
+  session_type?: string;
+  /** 면접 한정: 다음 꼬리질문 텍스트 (YouTube면 null) */
+  next_question?: string | null;
+  /** 면접 한정: 다음 꼬리질문 ID (YouTube면 null) */
+  next_question_id?: number | null;
 }
 
 // ---------- 서버 → 클라이언트: 처리 단계 ----------
