@@ -35,7 +35,7 @@ import { Button } from "@/components/ui/button";
 import { MicButton } from "@/components/common/MicButton";
 import { ErrorModal } from "@/components/common/ErrorModal";
 import { ProcessingSkeleton } from "@/components/common/ProcessingSkeleton";
-import { WordHeatmap } from "@/components/features/youtube/WordHeatmap";
+import { WordAnalysis } from "@/components/features/youtube/WordAnalysis";
 import { useAudioStreamer } from "@/hooks/useAudioStreamer";
 import { useFinalizeInterview } from "@/hooks/queries/useInterviewMutations";
 import { getErrorMessage } from "@/lib/api";
@@ -653,7 +653,7 @@ function UserVoiceBubble({
               <p className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle mb-2">
                 Word Breakdown
               </p>
-              <WordHeatmap words={result.words} />
+              <WordAnalysis words={result.words} audioUrl={result.user_tts_url} />
             </div>
 
             {/* AI 피드백 */}

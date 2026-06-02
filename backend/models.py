@@ -83,6 +83,8 @@ class WordLog(SQLModel, table=True):
     accuracy_score: float
     error_type: Optional[str] = None
     phoneme_data: Optional[str] = None
+    start_time: Optional[float] = None   # Step 11-D — user_tts 내 재생 시작(초)
+    end_time: Optional[float] = None     # Step 11-D — user_tts 내 재생 끝(초)
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

@@ -22,7 +22,7 @@ import { useHistorySession } from "@/hooks/queries/useHistorySession";
 import { cn, getScoreTier, scoreTierClasses } from "@/lib/utils";
 import { ScoreDisplay } from "@/components/common/ScoreDisplay";
 import { PageHeader } from "@/components/common/PageHeader";
-import { WordHeatmap } from "@/components/features/youtube/WordHeatmap";
+import { WordAnalysis } from "@/components/features/youtube/WordAnalysis";
 import { InterviewReportSection } from "@/components/features/history/InterviewReportSection";
 import { getErrorMessage } from "@/lib/api";
 import type {
@@ -331,7 +331,7 @@ function AnswerBlock({
           <p className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle mb-2">
             Word analysis
           </p>
-          <WordHeatmap words={log.word_logs} />
+          <WordAnalysis words={log.word_logs} audioUrl={log.user_tts_url} />
         </div>
       )}
 

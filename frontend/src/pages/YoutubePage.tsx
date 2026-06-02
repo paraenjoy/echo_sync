@@ -17,7 +17,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MicButton } from "@/components/common/MicButton";
-import { WordHeatmap } from "@/components/features/youtube/WordHeatmap";
+import { WordAnalysis } from "@/components/features/youtube/WordAnalysis";
 import { ProcessingSkeleton } from "@/components/common/ProcessingSkeleton";
 import { ErrorModal } from "@/components/common/ErrorModal";
 import { useAudioStreamer } from "@/hooks/useAudioStreamer";
@@ -114,8 +114,8 @@ export default function YoutubePage() {
           </h1>
 
           <p className="text-fg-muted text-lg leading-relaxed mb-10 max-w-prose">
-            관심 있는 YouTube 영상의 URL을 붙여넣으면, AI가 영상 내용을 바탕으로
-            맞춤 질문을 만들어드려요. 직접 답해보고 발음 피드백까지 받아보세요.
+            YouTube 링크만 붙여넣으면 끝. 영상 내용으로 만든 질문에 답하며
+            발음 피드백까지 받아보세요.
           </p>
 
           {/* Form */}
@@ -325,7 +325,7 @@ function ResultSection({
         <p className="font-mono text-xs uppercase tracking-wider text-fg-subtle mb-4">
           Word Breakdown
         </p>
-        <WordHeatmap words={result.words} />
+        <WordAnalysis words={result.words} audioUrl={result.user_tts_url} />
       </div>
 
       {/* ── AI 피드백 ────────────────────────────────────── */}

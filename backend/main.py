@@ -157,6 +157,41 @@ def process_pronunciation_result(result_obj):
     }
 
 
+def _normalize_word(w: str) -> str:
+    """매칭용 정규화 — 소문자화 + 영숫자만 남김 (구두점·기호 제거)"""
+    return "".join(ch for ch in w.lower() if ch.isalnum())
+
+
+def align_word_timings(words: list, timings: list) -> None:
+    """
+    채점 정본(words)에 user_tts word boundary 타이밍을 순차 정렬해
+    start/end를 in-place 주입한다. (Step 11-D)
+
+    - words: process_pronunciation_result의 word_details (정본, 순서 유지)
+    - timings: generate_native_audio(..., capture_word_timings=True)의 결과
+    - 매칭 실패 단어는 start=end=None → 프론트에서 클릭 비활성
+
+    두 배열 모두 같은 result.text에서 파생되어 시퀀스가 거의 일치하므로
+    단조 증가 포인터(ti)로 순차 매칭한다. 구두점 처리 차이로 인한
+    소폭 어긋남은 앞쪽부터 재탐색해 흡수.
+    """
+    ti = 0
+    for w in words:
+        w["start"] = None
+        w["end"] = None
+        target = _normalize_word(w.get("word", ""))
+        if not target:
+            continue
+        scan = ti
+        while scan < len(timings):
+            if _normalize_word(timings[scan]["word"]) == target:
+                w["start"] = timings[scan]["start"]
+                w["end"] = timings[scan]["end"]
+                ti = scan + 1
+                break
+            scan += 1
+
+
 async def get_ai_coaching(final_data, current_question):
     prompt = f"""
     당신은 1:1 영어 회화 및 면접 발음 코치입니다.
@@ -188,9 +223,16 @@ async def get_ai_coaching(final_data, current_question):
         return f"코칭 생성 실패: {str(e)}"
 
 
-async def generate_native_audio(text, file_name):
+async def generate_native_audio(text, file_name, capture_word_timings=False):
+    """
+    텍스트를 Azure TTS(en-US-JennyNeural)로 합성해 mp3 URL을 반환.
+
+    capture_word_timings=True면 합성 중 synthesis_word_boundary 이벤트로
+    단어별 [start, end](초)를 함께 수집해 (url, timings) 튜플로 반환한다.
+    (Step 11-D — user_tts_url의 단어별 재생 구간 확보용)
+    """
     if not text or len(text.strip()) < 2:
-        return None
+        return (None, []) if capture_word_timings else None
 
     speech_config = speechsdk.SpeechConfig(
         subscription=AZURE_KEY,
@@ -206,13 +248,32 @@ async def generate_native_audio(text, file_name):
         audio_config=audio_config
     )
 
+    # ── 단어 경계 타임스탬프 캡처 (Step 11-D) ──────────────────
+    word_timings: list[dict] = []
+    if capture_word_timings:
+        def _on_word_boundary(evt):
+            # 단어 경계만 수집 (구두점/문장 경계 제외)
+            if evt.boundary_type != speechsdk.SpeechSynthesisBoundaryType.Word:
+                return
+            # audio_offset 단위는 100ns 틱 → 초로 변환
+            start = evt.audio_offset / 10_000_000
+            # duration은 timedelta
+            dur = evt.duration.total_seconds()
+            word_timings.append({
+                "word": evt.text,
+                "start": round(start, 3),
+                "end": round(start + dur, 3),
+            })
+        synthesizer.synthesis_word_boundary.connect(_on_word_boundary)
+
     result = synthesizer.speak_text_async(text).get()
     result = cast(Any, result)
 
     if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-        return f"/static/audio/{file_name}.mp3"
+        url = f"/static/audio/{file_name}.mp3"
+        return (url, word_timings) if capture_word_timings else url
 
-    return None
+    return (None, []) if capture_word_timings else None
 
 
 def save_pcm_as_wav(
@@ -587,13 +648,18 @@ async def websocket_endpoint(websocket: WebSocket):
 
         feedback = await get_ai_coaching(final_data, current_question)
 
-        user_tts = await generate_native_audio(
+        # user_tts는 단어별 타이밍을 함께 캡처 (Step 11-D)
+        user_tts, user_word_timings = await generate_native_audio(
             result.text,
-            f"u_{result.result_id}"
+            f"u_{result.result_id}",
+            capture_word_timings=True,
         )
+        # 채점 정본 words에 start/end 주입 (in-place)
+        align_word_timings(final_data["words"], user_word_timings)
 
         model_text = extract_model_answer(feedback)
 
+        # model_tts는 단어 재생 대상이 아니므로 타이밍 불필요 — 기존 그대로
         model_tts = await generate_native_audio(
             model_text,
             f"m_{result.result_id}"
@@ -663,8 +729,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         word["phonemes"],
                         ensure_ascii=False
                     ),
+                    start_time=word.get("start"),   # Step 11-D
+                    end_time=word.get("end"),       # Step 11-D
                 )
-
                 db.add(word_log)
 
             db.commit()
@@ -1175,10 +1242,11 @@ def _build_session_dict(s, session):
                         "word": wl.word,
                         "accuracy": wl.accuracy_score,
                         "error_type": wl.error_type,
-                        "phonemes": json.loads(wl.phoneme_data)
-                            if wl.phoneme_data else [],
+                        "phonemes": json.loads(wl.phoneme_data) if wl.phoneme_data else [],
+                        "start": wl.start_time,   # Step 11-D
+                        "end": wl.end_time,       # Step 11-D
                     }
-                    for wl in word_logs_map.get(cast(int, log.id), [])
+                    for wl in word_logs_map.get(log.id, [])
                 ],
             }
             for log in logs

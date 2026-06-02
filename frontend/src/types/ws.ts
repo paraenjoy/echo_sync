@@ -31,6 +31,9 @@ export interface WsWord {
   accuracy: number;
   error_type: string | null;
   phonemes: WsPhoneme[];
+  /** user_tts_url 내에서 이 단어의 재생 구간(초). 매칭 실패/하위호환 시 null. (Step 11-D) */
+  start?: number | null;
+  end?: number | null;
 }
 
 export interface WsSentenceScore {
