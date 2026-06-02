@@ -141,7 +141,7 @@ export default function YoutubePage() {
           {/* 로딩 스켈레톤 */}
           {questionsQuery.isFetching && (
             <div className="mt-10">
-              <ProcessingSkeleton />
+              <ProcessingSkeleton variant="question-generation" />
             </div>
           )}
 

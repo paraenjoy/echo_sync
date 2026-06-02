@@ -29,6 +29,8 @@ import {
   TECH_STACK_MAP,
   EXPERIENCE_LEVELS,
   INTERVIEW_MODES,
+  DEFAULT_MAX_QUESTIONS,
+  MAX_QUESTIONS_OPTIONS,
   type Position,
 } from "@/types/interview";
 
@@ -42,6 +44,7 @@ export default function InterviewSetupPage() {
   const [experienceLevel, setExperienceLevel] = useState("");
   const [interviewMode, setInterviewMode] = useState("");
   const [projectSummary, setProjectSummary] = useState("");
+  const [maxQuestions, setMaxQuestions] = useState<number>(DEFAULT_MAX_QUESTIONS);
   const [file, setFile] = useState<File | null>(null);
 
   // 직무 변경 시 기술 스택 자동 초기화
@@ -88,6 +91,7 @@ export default function InterviewSetupPage() {
         experience_level: experienceLevel,
         project_summary: projectSummary.trim(),
         interview_mode: interviewMode,
+        max_questions: maxQuestions,
         file,
       },
       {
@@ -101,6 +105,7 @@ export default function InterviewSetupPage() {
               firstQuestion: data.question,
               position,
               interviewMode,
+              maxQuestions, // 신규 (Step 10-C2) — Room에서 자연 종료 분기에 사용
             },
           });
         },
@@ -208,6 +213,44 @@ export default function InterviewSetupPage() {
               </Select>
             </FormField>
           </div>
+
+          {/* 질문 개수 (Step 10-C1) ─── 1~9 칩 그리드 */}
+          <FormField
+            label="질문 개수"
+            hint="첫 질문 + 꼬리질문을 합쳐 최대 몇 개까지 진행할지 정해주세요"
+          >
+            <div
+              role="radiogroup"
+              aria-label="질문 개수"
+              className="grid grid-cols-9 gap-2"
+            >
+              {MAX_QUESTIONS_OPTIONS.map((n) => {
+                const isSelected = maxQuestions === n;
+                return (
+                  <button
+                    key={n}
+                    type="button"
+                    role="radio"
+                    aria-checked={isSelected}
+                    onClick={() => setMaxQuestions(n)}
+                    className={cn(
+                      "h-11 rounded-md border font-display tabular-nums text-base",
+                      "transition-colors focus:outline-none",
+                      "focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
+                      isSelected
+                        ? "border-accent bg-accent/15 text-accent"
+                        : "border-border bg-bg-elevated text-fg-muted hover:border-border-strong hover:text-fg"
+                    )}
+                  >
+                    {n}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 font-mono text-[11px] uppercase tracking-wider text-fg-subtle">
+              현재 선택 · <span className="text-fg-muted">{maxQuestions}개</span>
+            </p>
+          </FormField>
 
           {/* 프로젝트 요약 */}
           <FormField

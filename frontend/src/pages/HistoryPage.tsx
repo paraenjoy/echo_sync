@@ -24,6 +24,7 @@ import { SessionCard } from "@/components/features/history/SessionCard";
 import { getErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/common/PageHeader";
+import { useDeleteHistorySession } from "@/hooks/queries/useDeleteHistorySession";
 
 export default function HistoryPage() {
   const navigate = useNavigate();
@@ -73,6 +74,27 @@ export default function HistoryPage() {
     navigate(`/history/${sessionId}`);
   };
 
+  // ── 삭제 mutation ─────────────────────────────────────────
+  const deleteMutation = useDeleteHistorySession();
+
+  // ── 카드 삭제 핸들러 (Step 10-D2) ─────────────────────────
+  // 컨펌 팝업으로 우발 삭제 방어. 실패 시에만 alert으로 안내,
+  // 성공 시에는 invalidate된 캐시로 카드가 자연스럽게 사라지므로 별도 알림 없음.
+  const handleDelete = (sessionId: number) => {
+    const ok = window.confirm(
+      "해당 세션을 정말 삭제하시겠습니까?\n\n" +
+        "이 세션의 모든 답변·점수·페르소나 리포트가 함께 사라지며,\n" +
+        "복구할 수 없어요."
+    );
+    if (!ok) return;
+
+    deleteMutation.mutate(sessionId, {
+      onError: (err) => {
+        window.alert(`삭제에 실패했어요.\n${getErrorMessage(err)}`);
+      },
+    });
+  };
+
   return (
     <main className="min-h-dvh bg-bg text-fg">
       <div className="mx-auto max-w-3xl px-6 pt-20 pb-24">
@@ -115,7 +137,15 @@ export default function HistoryPage() {
                     key={s.session_id}
                     ref={isLast ? lastCardRef : undefined}
                   >
-                    <SessionCard session={s} onSelect={handleSelect} />
+                    <SessionCard
+                      session={s}
+                      onSelect={handleSelect}
+                      onDelete={handleDelete}
+                      isDeleting={
+                        deleteMutation.isPending &&
+                        deleteMutation.variables === s.session_id
+                      }
+                    />
                   </li>
                 );
               })}

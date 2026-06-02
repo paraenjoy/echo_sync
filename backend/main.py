@@ -41,6 +41,12 @@ AZURE_REGION = os.getenv("AZURE_SPEECH_REGION")
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 
+# 면접 세션 1건의 기본 질문 한계 (초기 + 꼬리질문 합산).
+# 사용자가 setup 화면에서 1~9 사이로 조정할 수 있으며, 선택값은
+# StudySession.metadata_json에 함께 저장된다. setup에서 값이 누락되거나
+# 메타데이터 파싱이 실패할 경우 이 기본값으로 폴백한다.
+DEFAULT_MAX_QUESTIONS_PER_INTERVIEW = 5
+
 GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL", "models/gemini-2.0-flash-lite")
 
 genai.configure(api_key=GEMINI_KEY)
@@ -664,30 +670,47 @@ async def websocket_endpoint(websocket: WebSocket):
             db.commit()
 
             if session_type == "interview":
-                follow_up = await interview_manager.generate_follow_up(
-                    current_question,
-                    result.text
-                )
+                # 세션별 한계값 추출 — metadata_json(setup_data)에서 읽고, 누락/파싱 실패 시
+                # 안전 기본값으로 폴백. 1~9 범위를 벗어난 값(과거 데이터 등)도 default로 복원.
+                max_questions = DEFAULT_MAX_QUESTIONS_PER_INTERVIEW
+                if session_obj and session_obj.metadata_json:
+                    try:
+                        meta = json.loads(session_obj.metadata_json)
+                        raw = meta.get("max_questions")
+                        if isinstance(raw, int) and 1 <= raw <= 9:
+                            max_questions = raw
+                    except json.JSONDecodeError:
+                        pass  # 기본값 유지
 
+                # 깊이 카운트 (방금 답한 질문도 이미 DB에 있음)
                 all_questions = db.exec(
                     select(Question).where(Question.session_id == current_session_id)
                 ).all()
 
-                next_order = len(all_questions) + 1
-
-                next_q = Question(
-                    session_id=current_session_id,
-                    order_no=next_order,
-                    question_type="interview_followup",
-                    question_text=follow_up,
-                )
-
-                db.add(next_q)
-                db.commit()
-                db.refresh(next_q)
-
-                next_question_id = next_q.id
-                next_question = next_q.question_text
+                if len(all_questions) >= max_questions:
+                    # 한계 도달 — 꼬리질문 생성 스킵 (next_question/next_question_id는 None 유지)
+                    pass
+                else:
+                    follow_up = await interview_manager.generate_follow_up(
+                        current_question,
+                        result.text
+                    )
+                    
+                    next_order = len(all_questions) + 1
+                    
+                    next_q = Question(
+                        session_id=current_session_id,
+                        order_no=next_order,
+                        question_type="interview_followup",
+                        question_text=follow_up,
+                    )
+                    
+                    db.add(next_q)
+                    db.commit()
+                    db.refresh(next_q)
+                    
+                    next_question_id = next_q.id
+                    next_question = next_q.question_text
 
         await websocket.send_text(json.dumps({
             "type": "final",
@@ -723,10 +746,18 @@ async def start_unified_interview(
     experience_level: str = Form(...),
     project_summary: str = Form(...),
     interview_mode: str = Form(...),
+    max_questions: int = Form(DEFAULT_MAX_QUESTIONS_PER_INTERVIEW),  # 신규
     file: Optional[UploadFile] = File(None),
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
+    # 사용자 조절 한계값 검증 (Step 10-C1)
+    if not (1 <= max_questions <= 9):
+        raise HTTPException(
+            status_code=400,
+            detail="질문 개수는 1과 9 사이여야 합니다.",
+        )
+        
     pdf_text = ""
 
     if file:
@@ -750,6 +781,7 @@ async def start_unified_interview(
         "experience_level": experience_level,
         "project_summary": project_summary,
         "interview_mode": interview_mode,
+        "max_questions": max_questions,  # 신규 — /ws/audio가 이 값을 읽는다
     }
 
     question_text = await interview_manager.generate_unified_question(
@@ -1201,6 +1233,79 @@ def get_history_session(
         raise HTTPException(status_code=403, detail="접근 권한이 없습니다.")
 
     return _build_session_dict(s, session)
+
+
+@app.delete("/history/{session_id}")
+def delete_history_session(
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """
+    히스토리 세션 삭제 (Step 10-D / feedback.md 2순위).
+
+    삭제 정책:
+      - 본인 소유 세션만 삭제 가능 (403)
+      - 답변(SpeakingLog)·페르소나 리포트(InterviewReport) 보유 여부와
+        무관하게 삭제 가능. 우발 삭제 방어는 프론트의
+        "정말 삭제하시겠습니까?" 컨펌 팝업이 담당한다.
+
+    Cascade 순서 (외래키 의존 그래프, 자식 → 부모):
+        WordLog ← SpeakingLog ← StudySession
+                                ↑
+        InterviewReport ────────┤
+        Question ───────────────┘
+
+    정적 오디오/이미지 파일(audio_url, user_tts_url, model_tts_url 등)은
+    여러 곳에서 참조될 가능성이 있고 외부(pollinations.ai) URL도 섞여 있어
+    여기서는 DB row만 정리한다. 디스크 정리는 별도 정리 잡 영역.
+    """
+    study_session = session.exec(
+        select(StudySession).where(StudySession.id == session_id)
+    ).first()
+
+    if not study_session:
+        raise HTTPException(status_code=404, detail="해당 세션을 찾을 수 없습니다.")
+
+    if study_session.user_id != cast(int, current_user.id):
+        raise HTTPException(status_code=403, detail="접근 권한이 없습니다.")
+
+    # 1) WordLog 정리 — 해당 세션의 SpeakingLog ID를 모아 한 번에 매칭
+    logs = session.exec(
+        select(SpeakingLog).where(SpeakingLog.session_id == session_id)
+    ).all()
+    log_ids = [cast(int, log.id) for log in logs if log.id is not None]
+
+    if log_ids:
+        word_logs = session.exec(
+            select(WordLog).where(WordLog.speaking_log_id.in_(log_ids))  # type: ignore
+        ).all()
+        for wl in word_logs:
+            session.delete(wl)
+
+    # 2) SpeakingLog 정리
+    for log in logs:
+        session.delete(log)
+
+    # 3) InterviewReport 정리 (면접 세션이면 1건, 그 외 없음)
+    report = session.exec(
+        select(InterviewReport).where(InterviewReport.session_id == session_id)
+    ).first()
+    if report:
+        session.delete(report)
+
+    # 4) Question 정리
+    questions = session.exec(
+        select(Question).where(Question.session_id == session_id)
+    ).all()
+    for q in questions:
+        session.delete(q)
+
+    # 5) StudySession 삭제 + 일괄 커밋
+    session.delete(study_session)
+    session.commit()
+
+    return {"message": "세션이 삭제되었습니다.", "session_id": session_id}
 
 
 @app.get("/progress")

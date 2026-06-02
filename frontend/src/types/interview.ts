@@ -19,6 +19,7 @@ export interface InterviewSetupInput {
   experience_level: string;
   project_summary: string;
   interview_mode: string;
+  max_questions: number; // 신규 (Step 10-C1) — 1~9, 기본 5
   file?: File | null; // PDF 자기소개서 (선택)
 }
 
@@ -86,3 +87,15 @@ export const INTERVIEW_MODES = [
   { value: "Sharp and Analytical", label: "날카로운 분석형" },
   { value: "Aggressive Stress Interview", label: "압박 면접형" },
 ] as const;
+
+// ─────────────────────────────────────────────────────────────
+// 질문 개수 한계 (Step 10-C1)
+//   - 백엔드: DEFAULT_MAX_QUESTIONS_PER_INTERVIEW = 5, 1~9 검증
+//   - 프론트: setup 화면에서 사용자가 1~9 사이로 선택
+// ─────────────────────────────────────────────────────────────
+export const MAX_QUESTIONS_MIN = 1;
+export const MAX_QUESTIONS_MAX = 9;
+export const DEFAULT_MAX_QUESTIONS = 5;
+/** 칩 그리드 렌더용 1~9 목록 */
+export const MAX_QUESTIONS_OPTIONS: ReadonlyArray<number> =
+  Array.from({ length: MAX_QUESTIONS_MAX - MAX_QUESTIONS_MIN + 1 }, (_, i) => MAX_QUESTIONS_MIN + i);

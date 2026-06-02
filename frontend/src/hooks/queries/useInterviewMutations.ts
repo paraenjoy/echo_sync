@@ -53,6 +53,7 @@ function buildSetupFormData(input: InterviewSetupInput): FormData {
   fd.append("experience_level", input.experience_level);
   fd.append("project_summary", input.project_summary);
   fd.append("interview_mode", input.interview_mode);
+  fd.append("max_questions", String(input.max_questions)); // 신규 (Step 10-C1)
   if (input.file) {
     fd.append("file", input.file);
   }

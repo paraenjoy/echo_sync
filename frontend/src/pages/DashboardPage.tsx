@@ -24,6 +24,7 @@ import { PersonaCard } from "@/components/features/dashboard/PersonaCard";
 import { ScoreTrendChart } from "@/components/features/dashboard/ScoreTrendChart";
 import { RecommendationsPanel } from "@/components/features/dashboard/RecommendationsPanel";
 import { getErrorMessage } from "@/lib/api";
+import { AICoachingCard } from "@/components/features/dashboard/AICoachingCard";
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
@@ -225,14 +226,7 @@ function AnalysisContent({
 
       {/* AI 누적 분석 */}
       {data.ai_analysis && (
-        <div className="border border-border rounded-xl bg-bg-elevated p-6">
-          <p className="font-mono text-xs uppercase tracking-wider text-fg-subtle mb-3">
-            AI Coaching
-          </p>
-          <p className="text-sm text-fg leading-relaxed whitespace-pre-line">
-            {data.ai_analysis}
-          </p>
-        </div>
+        <AICoachingCard text={data.ai_analysis} />
       )}
     </div>
   );

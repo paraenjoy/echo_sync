@@ -53,6 +53,7 @@ interface RoomLocationState {
   firstQuestion: string;
   position: string;
   interviewMode: string;
+  maxQuestions: number;
 }
 
 function isValidRoomState(s: unknown): s is RoomLocationState {
@@ -64,6 +65,7 @@ function isValidRoomState(s: unknown): s is RoomLocationState {
     typeof v.firstQuestion === "string" &&
     typeof v.position === "string" &&
     typeof v.interviewMode === "string"
+    typeof v.maxQuestions === "number"
   );
 }
 
@@ -80,6 +82,7 @@ export type ChatMessage =
       localAudioUrl: string | null;
     }
   | { kind: "error"; id: string; message: string };
+  | { kind: "completion"; id: string; questionCount: number };
 
 const genId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -173,7 +176,20 @@ export default function InterviewRoomPage() {
       nextQuestion.trim().length > 0 &&
       typeof nextQuestionId === "number";
 
-    // user-voice 카드 + (있으면) 다음 질문을 한 번에 반영
+    // 현재까지의 질문 수 (이번 응답 처리 직전 기준).
+    // 백엔드가 next_question=null을 보낸 경우, 이 값이 한계와 같거나 크면
+    // "한계 도달 → 자연 종료(completion)", 그 외는 안전망(에러 카드)로 분기한다.
+    const currentQuestionCount = messages.filter(
+      (m) => m.kind === "question"
+    ).length;
+
+    // Step 10-C2 정상 종료 판정: 백엔드(C-1)가 5번째(또는 사용자가 정한 N번째)
+    // 답변 후 의도적으로 next_question=null을 보낸 케이스인지 판별.
+    // questionCount는 messages 기준이므로 첫 질문 이후 매 턴 자연스럽게 증가한다.
+    const reachedLimit =
+      !hasFollowUp && currentQuestionCount >= state.maxQuestions;
+
+    // user-voice 카드 + (다음 질문 / 정상 종료 / 안전망 에러) 중 하나를 한 번에 반영
     setMessages((prev) => [
       ...prev,
       {
@@ -192,8 +208,18 @@ export default function InterviewRoomPage() {
               text: nextQuestion as string,
             },
           ]
+        : reachedLimit
+        ? [
+            {
+              kind: "completion" as const,
+              id: genId(),
+              questionCount: currentQuestionCount,
+            },
+          ]
         : [
             {
+              // 안전망: 백엔드가 한계 도달이 아닌데도 null을 보낸 경우.
+              // 제거 금지 — 회귀 방지 목적.
               kind: "error" as const,
               id: genId(),
               message:
@@ -206,6 +232,12 @@ export default function InterviewRoomPage() {
     if (hasFollowUp) {
       setCurrentQuestion(nextQuestion as string);
       setCurrentQuestionId(nextQuestionId as number);
+    }
+
+    // 한계 도달 → 자동으로 종료 패널로 전환 (사용자가 "면접 종료" 버튼을
+    // 누르지 않아도 흐름이 자연스럽게 finalize 진입점에 도달)
+    if (reachedLimit) {
+      setEnded(true);
     }
 
     // streamer는 다음 답변 위해 idle 상태로 복원
@@ -461,6 +493,8 @@ function ChatMessageView({ message }: { message: ChatMessage }) {
           localAudioUrl={message.localAudioUrl}
         />
       );
+    case "completion":
+      return <CompletionBubble questionCount={message.questionCount} />;
     case "error":
       return <ErrorBubble message={message.message} />;
   }
@@ -491,6 +525,52 @@ function ErrorBubble({ message }: { message: string }) {
         <p className="text-sm text-fg">{message}</p>
       </div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// CompletionBubble — 한계 도달로 자연 종료된 면접의 완료 알림
+//
+// 디자인 의도 (Step 10-C2):
+//  - 에러 톤 아님: 사용자가 setup에서 정한 분량을 모두 답변한 정상 종료.
+//  - accent 톤 보더 + 체크 마크로 긍정적 마무리 신호.
+//  - 직후 자동으로 EndPanel이 노출되므로, 별도 CTA 없이 안내문 역할만 담당.
+// ─────────────────────────────────────────────────────────────
+function CompletionBubble({ questionCount }: { questionCount: number }) {
+  return (
+    <div className="max-w-[88%] mx-auto animate-fade-up">
+      <div className="rounded-md border border-accent/40 bg-accent/10 px-4 py-3">
+        <div className="flex items-center gap-2 mb-1">
+          <CheckIcon />
+          <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-accent">
+            Interview complete
+          </p>
+        </div>
+        <p className="text-sm text-fg leading-relaxed">
+          설정하신 <span className="tabular-nums font-display">{questionCount}</span>개
+          질문에 모두 답변하셨어요. 아래에서 페르소나 리포트를 생성할 수 있어요.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="text-accent"
+      aria-hidden
+    >
+      <path d="M2.5 7.5l3 3 6-6" />
+    </svg>
   );
 }
 
@@ -598,6 +678,13 @@ function UserVoiceBubble({
 
 // ─────────────────────────────────────────────────────────────
 // 입력 패널 — 음성 모드
+//
+// 스톱워치 (Step 10-C3):
+//  - status === "recording" 동안 0:00부터 카운트업, 그 외엔 숨김
+//  - 권장 시간: 90초까지 기본 톤, 90~120초 주의(score-mid), 120초+ 경고(score-low)
+//  - 강제 정지는 하지 않는다 — 답변 중 생각 시간을 차단하지 않도록 사용자 자율에 맡김
+//  - 1초마다 읽히면 스크린리더에 부담이라 시계 자체는 aria-hidden, 임계치 메시지만
+//    role="status" + aria-live="polite"로 한 번 안내
 // ─────────────────────────────────────────────────────────────
 function VoiceInputPanel({
   status,
@@ -610,17 +697,87 @@ function VoiceInputPanel({
   onToggle: () => void;
   disabled: boolean;
 }) {
-  const hint =
-    status === "recording"
-      ? "답변이 끝나면 마이크를 다시 눌러주세요"
-      : status === "processing"
-        ? "음성을 분석하고 있어요"
-        : status === "connecting"
-          ? "마이크를 연결하고 있어요"
-          : "마이크를 눌러 답변을 시작하세요";
+  const isRecording = status === "recording";
+
+  // 권장 시간 임계치 (초)
+  const WARN_AT = 90; // 1:30 — 주의
+  const ALERT_AT = 120; // 2:00 — 경고
+
+  // 녹음 경과 시간(초). recording 진입 시 0으로 리셋되고, 다른 상태로 빠지면 정지.
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!isRecording) {
+      setElapsed(0);
+      return;
+    }
+    // Date.now 기준으로 계산 → 탭이 비활성됐다가 돌아와도 정확한 경과를 복원
+    const startedAt = Date.now();
+    setElapsed(0);
+    // 0.25초 간격으로 polling — 표시는 초 단위이지만 부드러운 동기화 확보
+    const id = window.setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [isRecording]);
+
+  // 임계치별 톤 분기
+  const tone =
+    elapsed >= ALERT_AT
+      ? "score-low"
+      : elapsed >= WARN_AT
+        ? "score-mid"
+        : null;
+  const timerColorCls =
+    tone === "score-low"
+      ? "text-score-low"
+      : tone === "score-mid"
+        ? "text-score-mid"
+        : "text-fg-muted";
+
+  const mm = Math.floor(elapsed / 60);
+  const ss = elapsed % 60;
+  const timeStr = `${mm}:${ss.toString().padStart(2, "0")}`;
+
+  const hint = isRecording
+    ? "답변이 끝나면 마이크를 다시 눌러주세요"
+    : status === "processing"
+      ? "음성을 분석하고 있어요"
+      : status === "connecting"
+        ? "마이크를 연결하고 있어요"
+        : "마이크를 눌러 답변을 시작하세요";
 
   return (
     <div className="grid place-items-center py-2">
+      {/* ── 스톱워치 (recording 동안만) ───────────────────────── */}
+      {isRecording && (
+        <div className="mb-3 text-center min-h-[44px]">
+          <p
+            className={cn(
+              "font-display tabular-nums text-2xl leading-none transition-colors",
+              timerColorCls
+            )}
+            aria-hidden
+          >
+            {timeStr}
+          </p>
+          {tone && (
+            <p
+              role="status"
+              aria-live="polite"
+              className={cn(
+                "mt-1 text-[10px] font-mono uppercase tracking-wider transition-colors",
+                timerColorCls
+              )}
+            >
+              {tone === "score-low"
+                ? "답변이 길어요 — 마무리해주세요"
+                : "권장 시간을 넘었어요"}
+            </p>
+          )}
+        </div>
+      )}
+
       <MicButton
         size="sm"
         showCaption={false}
