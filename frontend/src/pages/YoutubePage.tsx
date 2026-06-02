@@ -28,6 +28,7 @@ import {
 import { cn, getScoreTier, scoreTierClasses } from "@/lib/utils";
 import { ScoreDisplay } from "@/components/common/ScoreDisplay";
 import { AudioPlayer } from "@/components/common/AudioPlayer";
+import { WaveformVisualizer } from "@/components/common/WaveformVisualizer";
 import { getErrorMessage } from "@/lib/api";
 import type { YoutubeQuestion } from "@/types/youtube";
 
@@ -204,6 +205,18 @@ export default function YoutubePage() {
             </details>
           )}
         </section>
+
+        {/* ── 실시간 파형 (Step 11-B) ─────────────────────────
+            큰 마이크(176px)에 비례해 w-72(288px)로 확장. 마이크 위에 배치 */}
+        <div className="grid place-items-center mb-4">
+          <WaveformVisualizer
+            analyser={audio.analyser}
+            active={audio.status === "recording"}
+            bars={36}
+            height={36}
+            className="w-72"
+          />
+        </div>
 
         {/* Mic Button + Volume Visualizer */}
         <section className="grid place-items-center my-12">

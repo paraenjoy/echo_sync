@@ -80,6 +80,9 @@ export interface UseAudioStreamerReturn {
   stage: WsStage | null;
   /** 0.0 ~ 1.0 정규화된 RMS 음량 (마이크 시각화용) */
   volume: number;
+  /** 실시간 파형 시각화용 AnalyserNode. recording 동안 활성, 정리 시 null로 복귀.
+   *  WaveformVisualizer에 그대로 prop으로 넘기면 된다. */
+  analyser: AnalyserNode | null;
   /** 서버 최종 분석 결과 (completed 시점에 채워짐) */
   result: WsFinalResult | null;
   error: StreamerError | null;
@@ -149,6 +152,8 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
   const [status, setStatus] = useState<StreamerStatus>("idle");
   const [stage, setStage] = useState<WsStage | null>(null);
   const [volume, setVolume] = useState(0);
+  // ▼ 추가 — WaveformVisualizer가 받을 AnalyserNode 핸들 (state로 노출 + ref로 정리)
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const [result, setResult] = useState<WsFinalResult | null>(null);
   const [error, setError] = useState<StreamerError | null>(null);
   const [localAudioUrl, setLocalAudioUrl] = useState<string | null>(null);
@@ -158,6 +163,7 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const localChunksRef = useRef<Blob[]>([]);
@@ -207,6 +213,14 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
       }
       sourceRef.current = null;
     }
+    if (analyserRef.current) {
+      try {
+        analyserRef.current.disconnect();
+      } catch {
+        /* noop */
+      }
+      analyserRef.current = null;
+    }
     if (audioContextRef.current && audioContextRef.current.state !== "closed") {
       audioContextRef.current.close().catch(() => {
         /* noop */
@@ -242,6 +256,8 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
     }
 
     safeSet(setVolume, 0);
+    // ▼ 추가 — 컴포넌트 trees가 다음 세션 시작 시 새 analyser를 받게 한다
+    safeSet(setAnalyser, null);
   }, [safeSet]);
 
   // ---------- 언마운트 시 자동 정리 ----------
@@ -380,6 +396,16 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
 
           const source = ctx.createMediaStreamSource(stream);
           sourceRef.current = source;
+
+          // ── 파형 시각화용 분기 (Step 11-B) ─────────────────────
+          // source에서 갈라져 나가는 별도 노선이라 PCM 송신 경로에 영향이 없다.
+          // fftSize=256 → frequencyBinCount=128, 막대 32개 표현에 충분.
+          // smoothingTimeConstant는 기본값(0.8) 그대로 — 막대가 너무 튀지 않게.
+          const analyserNode = ctx.createAnalyser();
+          analyserNode.fftSize = 256;
+          source.connect(analyserNode);
+          analyserRef.current = analyserNode;
+          safeSet(setAnalyser, analyserNode);
 
           const processor = ctx.createScriptProcessor(
             AUDIO_CONFIG.BUFFER_SIZE,
@@ -559,6 +585,7 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
     status,
     stage,
     volume,
+    analyser,
     result,
     error,
     localAudioUrl,

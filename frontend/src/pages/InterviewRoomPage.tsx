@@ -42,6 +42,8 @@ import { getErrorMessage } from "@/lib/api";
 import { cn, getScoreTier, scoreTierClasses } from "@/lib/utils";
 import { ScoreDisplay } from "@/components/common/ScoreDisplay";
 import { AudioPlayer } from "@/components/common/AudioPlayer";
+import { WaveformVisualizer } from "@/components/common/WaveformVisualizer";
+import { TypingIndicator } from "@/components/common/TypingIndicator";
 import type { WsFinalResult } from "@/types/ws";
 
 // ─────────────────────────────────────────────────────────────
@@ -132,7 +134,9 @@ export default function InterviewRoomPage() {
       behavior: "smooth",
       block: "end",
     });
-  }, [messages]);
+    // audio.status를 deps에 포함 → processing 진입 시 TypingIndicator 위치까지
+    // 부드럽게 스크롤된다 (Step 11-C).
+  }, [messages, audio.status]);
 
   // ── 음성 결과 중복 처리 방지 ────────────────────────────────
   // useEffect가 result 객체 변화로 재실행될 때 같은 결과를 두 번 반영하지 않도록 가드
@@ -340,6 +344,11 @@ export default function InterviewRoomPage() {
           {messages.map((msg) => (
             <ChatMessageView key={msg.id} message={msg} />
           ))}
+          {/* ── 분석 중 타이핑 인디케이터 (Step 11-C) ─────────────
+              processing 동안만 transient하게 노출. 메시지 큐와 분리되어
+              있어 completed 전환 시 자동으로 unmount되며, user-voice +
+              next question 카드가 그 자리를 자연스럽게 메운다. */}
+          {audio.status === "processing" && <TypingIndicator />}
           <div ref={scrollAnchorRef} aria-hidden />
         </div>
       </section>
@@ -375,6 +384,7 @@ export default function InterviewRoomPage() {
               <VoiceInputPanel
                 status={audio.status}
                 volume={audio.volume}
+                analyser={audio.analyser}
                 onToggle={handleMicToggle}
                 disabled={inputDisabled}
               />
@@ -689,11 +699,13 @@ function UserVoiceBubble({
 function VoiceInputPanel({
   status,
   volume,
+  analyser,
   onToggle,
   disabled,
 }: {
   status: ReturnType<typeof useAudioStreamer>["status"];
   volume: number;
+  analyser: AnalyserNode | null;
   onToggle: () => void;
   disabled: boolean;
 }) {
@@ -777,6 +789,18 @@ function VoiceInputPanel({
           )}
         </div>
       )}
+
+      {/* ── 실시간 파형 (Step 11-B) ─────────────────────────────
+          - recording 동안만 활성. 그 외엔 컴포넌트가 자체적으로 idle 처리
+          - 마이크 위에 배치 — 입력 신호를 마이크로 흘려보내는 시각적 흐름
+          - sm 마이크(112px) 폭에 맞춰 192px(w-48)로 비례 */}
+      <WaveformVisualizer
+        analyser={analyser}
+        active={isRecording}
+        bars={28}
+        height={28}
+        className="mb-3 w-48"
+      />
 
       <MicButton
         size="sm"

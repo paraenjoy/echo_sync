@@ -676,9 +676,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 if session_obj and session_obj.metadata_json:
                     try:
                         meta = json.loads(session_obj.metadata_json)
-                        raw = meta.get("max_questions")
-                        if isinstance(raw, int) and 1 <= raw <= 9:
-                            max_questions = raw
+                        if isinstance(meta, dict):
+                            raw = meta.get("max_questions")
+                            if isinstance(raw, int) and 1 <= raw <= 9:
+                                max_questions = raw
                     except json.JSONDecodeError:
                         pass  # 기본값 유지
 

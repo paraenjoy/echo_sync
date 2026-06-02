@@ -272,6 +272,28 @@ export default function InterviewSetupPage() {
             label="자기소개서"
             hint="선택 — PDF 파일을 첨부하면 자기소개서 내용 기반의 질문을 받을 수 있어요"
           >
+            {/* ── 개인정보 처리 안내 (Step 11-A2 / feedback.md Q5) ──────
+                백엔드 utils.mask_pii가 추출 직후 이메일/전화/주민번호/이름·주소
+                라벨을 마스킹한 뒤 LLM에 전달한다는 사실을 사용자에게 명시한다.
+                디자인 토큰만 사용 — accent 톤으로 신뢰감 + 강조 없는 차분한 카드. */}
+            <div
+              className="mb-2.5 flex items-start gap-2.5 rounded-md border border-border bg-bg-elevated/70 px-3.5 py-3"
+              role="note"
+            >
+              <span className="grid place-items-center w-6 h-6 rounded-sm bg-accent/15 text-accent shrink-0 mt-px">
+                <IconShield />
+              </span>
+              <div className="text-xs text-fg-muted leading-relaxed">
+                <p className="text-fg mb-0.5 font-medium">
+                  업로드한 PDF는 질문 생성에만 사용돼요
+                </p>
+                <p>
+                  이메일·연락처·주민등록번호·이름·주소는 AI 전송 직전에 자동으로
+                  가려져요. 파일은 분석이 끝나면 서버에서 즉시 삭제됩니다.
+                </p>
+              </div>
+            </div>
+
             <FileUploader
               file={file}
               onFileChange={handleFileChange}
@@ -447,6 +469,28 @@ function IconUpload() {
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="17 8 12 3 7 8" />
       <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+  );
+}
+
+function IconShield() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {/* 방패 외곽 + 체크 — "보호되고 있음" 신호. lock 대신 shield-check를
+          선택한 이유: lock은 "잠겨 있어 못 봄"의 뉘앙스가 강해 차단감을 주지만,
+          여기서는 "처리되고 있으니 안심하라"가 톤에 맞다. */}
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="m9 12 2 2 4-4" />
     </svg>
   );
 }
