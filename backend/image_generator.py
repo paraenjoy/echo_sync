@@ -5,7 +5,7 @@ class PersonaImageGenerator:
 
     def __init__(self):
         self.model = genai.GenerativeModel(
-    'models/gemini-3.1-flash-lite-preview'
+    'models/gemini-3.1-flash-lite'
 )
 
     async def generate_persona_prompt(self, interview_history):

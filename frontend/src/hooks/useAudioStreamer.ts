@@ -14,8 +14,9 @@
  *
  * 백엔드 계약 (main.py /ws/audio, BACKEND_PR.md TODO #4):
  *  - 쿼리: ?token={JWT}&session_id={n}&question_id={n}
- *  - 송신: ArrayBuffer (Int16 PCM) → 종료 시 JSON {type:"stop", session_id, question_id, question}
- *  - 수신: { type:"status", stage:"asr"|"scoring"|"coaching" } (처리 단계) → { type:"final", ... } (최종 1회)
+ *  - 송신: ArrayBuffer (Int16 PCM, 16kHz) → 종료 시 JSON {type:"stop", session_id, question_id, question}
+ *  - 수신: { type:"status", stage:"asr"|"scoring"|"coaching" } (처리 단계)
+ *          → { type:"final", ... } (최종 1회) 또는 { "error": "..." } (인식 실패/내부 오류 1회)
  *
  * NOTE: ScriptProcessorNode는 deprecated이지만 백엔드 계약(Int16 PCM 16kHz)을
  *       만족하려면 AudioWorklet 마이그레이션 시 별도 작업이 필요하다.
@@ -28,6 +29,7 @@ import type {
   WsFinalResult,
   WsClientMessage,
   WsStage,
+  WsErrorMessage,
 } from "@/types/ws";
 import { isFinalResult, isStatusMessage } from "@/types/ws";
 
@@ -111,6 +113,39 @@ function floatTo16BitPCM(input: Float32Array): Int16Array {
 }
 
 /**
+ * 실제 캡처 레이트 → 16kHz 다운샘플 (구간 평균, 간이 anti-alias).
+ * 브라우저가 new AudioContext({sampleRate:16000}) 요청을 무시하고
+ * 하드웨어 레이트(44100/48000 등)로 컨텍스트를 만드는 경우가 있어,
+ * ctx.sampleRate를 신뢰하지 않고 송신 직전 16kHz로 변환한다.
+ * (백엔드 AudioStreamFormat은 16kHz 고정 → 레이트 불일치 시 인식 실패)
+ */
+function downsampleTo16k(
+  input: Float32Array,
+  inputRate: number,
+  targetRate: number
+): Float32Array {
+  if (targetRate >= inputRate) return input; // 이미 16kHz 이하면 그대로 (no-op)
+  const ratio = inputRate / targetRate;
+  const newLen = Math.round(input.length / ratio);
+  const output = new Float32Array(newLen);
+  let oIdx = 0;
+  let iIdx = 0;
+  while (oIdx < newLen) {
+    const nextIdx = Math.round((oIdx + 1) * ratio);
+    let sum = 0;
+    let count = 0;
+    for (let i = iIdx; i < nextIdx && i < input.length; i++) {
+      sum += input[i];
+      count++;
+    }
+    output[oIdx] = count > 0 ? sum / count : 0;
+    oIdx++;
+    iIdx = nextIdx;
+  }
+  return output;
+}
+
+/**
  * Float32 버퍼의 RMS(평균 제곱근) → 0~1 정규화
  * - 작은 노이즈 임계 미만은 0으로 보정하여 정적 상태 시 미세한 떨림 방지
  */
@@ -140,6 +175,23 @@ function pickRecorderMimeType(): string | undefined {
     if (MediaRecorder.isTypeSupported?.(type)) return type;
   }
   return undefined;
+}
+
+/**
+ * 서버 에러 프레임 판별.
+ * 백엔드 main.py /ws/audio는 STT 인식 실패(NoMatch)/내부 예외 시
+ * { "error": "..." } (type 태그 없는 레거시 형태)를 1회 보낸 뒤 소켓을 닫는다.
+ * status/final과 달리 type 키가 없으므로 error 키(string) 존재 여부로 판별한다.
+ *
+ * NOTE: isStatusMessage / isFinalResult는 types/ws.ts에 있으나, 이 가드는
+ *       현재 본 훅 전용이라 여기 둔다. 다른 곳에서도 쓰게 되면 ws.ts로 승격할 것.
+ */
+function isErrorMessage(msg: unknown): msg is WsErrorMessage {
+  return (
+    typeof msg === "object" &&
+    msg !== null &&
+    typeof (msg as Record<string, unknown>).error === "string"
+  );
 }
 
 // ---------- 훅 ----------
@@ -414,20 +466,40 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
           );
           processorRef.current = processor;
 
+          // [A-2] 실제 캡처 레이트 확인. 브라우저가 16kHz 요청을 무시하고
+          // 44100/48000 등으로 컨텍스트를 만들면, 송신 직전 downsampleTo16k로
+          // 맞춰 백엔드 Azure 포맷(16kHz 고정)과 일치시킨다. (인식 실패 방지)
+          // 한 번만 로깅 — 콘솔에 실제 레이트가 찍히면 레이트 불일치가 확정된다.
+          const actualRate = ctx.sampleRate;
+          if (actualRate !== AUDIO_CONFIG.SAMPLE_RATE) {
+            console.info(
+              `[useAudioStreamer] AudioContext가 16kHz 요청을 무시함 ` +
+                `(실제 ${actualRate}Hz) → 송신 전 다운샘플 적용`
+            );
+          }
+
           processor.onaudioprocess = (e) => {
             const input = e.inputBuffer.getChannelData(0);
 
-            // 음량 시각화 (RMS)
+            // 음량 시각화 (RMS) — 원본 버퍼 기준 (레이트 무관)
             const v = calculateVolume(input);
             // 너무 잦은 setState 방지: 직전 값과 0.02 이상 차이날 때만 업데이트
             if (isMountedRef.current) {
               setVolume((prev) => (Math.abs(prev - v) > 0.02 ? v : prev));
             }
 
-            // PCM 송신
+            // 16kHz로 변환 후 PCM 송신 (백엔드 Azure 포맷과 일치 보장)
             if (socket.readyState === WebSocket.OPEN) {
-              const pcm = floatTo16BitPCM(input);
-              socket.send(pcm.buffer);
+              const mono16k = downsampleTo16k(
+                input,
+                actualRate,
+                AUDIO_CONFIG.SAMPLE_RATE
+              );
+              const pcm = floatTo16BitPCM(mono16k);
+              // pcm은 new Int16Array(len)로 생성 → buffer는 항상 ArrayBuffer.
+              // 일부 lib.dom 타입에서 buffer가 ArrayBufferLike(SharedArrayBuffer 포함)로
+              // 추론되어 send() 시그니처와 충돌하므로 명시적으로 좁힌다. (TS2345 해소)
+              socket.send(pcm.buffer as ArrayBuffer);
             }
           };
 
@@ -460,7 +532,24 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
             return;
           }
 
-          // 2) 최종 결과 수신
+          // 2) 서버 처리 에러 (STT 인식 실패 / 내부 예외)
+          //    백엔드는 { "error": "..." }를 1회 보낸 뒤 소켓을 닫는다.
+          //    이 프레임을 처리하지 않으면 직후의 close가 "연결이 끊겼어요"로
+          //    오진되므로, 실제 사유를 노출하고 onclose 전에 정리한다.
+          if (isErrorMessage(data)) {
+            safeSet(setError, {
+              code: "UNKNOWN",
+              message:
+                data.error || "답변을 처리하지 못했어요. 다시 시도해주세요.",
+            });
+            safeSet(setStatus, "error");
+            // cleanup()이 socket.onclose를 분리하므로, 곧이은 소켓 close가
+            // NETWORK_ERROR 팝업으로 덮어쓰지 못한다. (핵심 수정점)
+            cleanup();
+            return;
+          }
+
+          // 3) 최종 결과 수신
           if (isFinalResult(data)) {
             // 로컬 녹음 Blob URL 생성
             // [작업 3] recorder를 로컬로 캡처 — 직후 cleanup()이 ref를 null로 만들어도

@@ -7,9 +7,9 @@ import wave
 from typing import List, Optional, cast, Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, File, UploadFile, Form, HTTPException, Depends, Query
+from fastapi import FastAPI, WebSocket, File, UploadFile, Form, HTTPException, Depends, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlmodel import Session, select
@@ -17,6 +17,7 @@ from sqlmodel import Session, select
 import azure.cognitiveservices.speech as speechsdk
 import google.generativeai as genai
 import urllib.parse
+import asyncio
 
 try:
     from openai import AsyncOpenAI
@@ -32,6 +33,7 @@ from models import User, StudySession, Question, SpeakingLog, WordLog, Interview
 from schemas import SignupRequest, LoginRequest, TokenResponse, MeResponse
 from security import hash_password, verify_password, create_access_token, decode_access_token
 from utils import get_transcript_via_whisper, extract_text_from_pdf
+from google.api_core.exceptions import ResourceExhausted  # Gemini 429
 
 
 load_dotenv()
@@ -47,7 +49,7 @@ OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 # 메타데이터 파싱이 실패할 경우 이 기본값으로 폴백한다.
 DEFAULT_MAX_QUESTIONS_PER_INTERVIEW = 5
 
-GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL", "models/gemini-2.0-flash-lite")
+GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL", "models/gemini-3.1-flash-lite")
 
 genai.configure(api_key=GEMINI_KEY)
 gemini_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
@@ -66,6 +68,53 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+def _cors_headers(request: Request) -> dict[str, str]:
+    """미처리 500은 ServerErrorMiddleware(=CORS 미들웨어 '바깥')에서 처리돼
+    CORS 헤더가 누락된다 → 브라우저 차단 → axios가 'Network Error'로 표시.
+    이를 막기 위해 핸들러에서 요청 Origin을 직접 반사한다."""
+    origin = request.headers.get("origin")
+    if not origin:
+        return {}
+    return {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Credentials": "true",
+        "Vary": "Origin",
+    }
+
+
+@app.exception_handler(ResourceExhausted)
+async def handle_gemini_quota(request: Request, exc: ResourceExhausted):
+    """Gemini 무료/일일 할당량 초과(429). 500이 아닌 503으로 의미를 명확히 전달.
+    이 핸들러는 ExceptionMiddleware(CORS '안쪽')에서 처리되어 CORS 헤더가 자동 부여된다."""
+    return JSONResponse(
+        status_code=503,
+        content={
+            "status": "error",
+            # axios 인터셉터는 detail을 우선 파싱하므로 detail/message 둘 다 채움
+            "detail": "AI 면접관(Gemini)의 사용량 한도를 초과했습니다. 잠시 후 다시 시도하거나 Gemini API 할당량·결제 설정을 확인해 주세요.",
+            "message": "AI 사용량 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.",
+        },
+        headers={"Retry-After": "60"},
+    )
+
+
+@app.exception_handler(Exception)
+async def handle_unexpected(request: Request, exc: Exception):
+    """그 외 모든 미처리 예외. 기본 ServerErrorMiddleware를 대체하므로
+    (1) 서버 로그용 트레이스백을 직접 출력하고
+    (2) CORS 헤더를 직접 부여해 프런트가 'Network Error' 대신 실제 메시지를 받게 한다.
+    HTTPException/검증 오류는 각자 기본 핸들러가 처리하므로 여기로 오지 않는다."""
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status": "error",
+            "detail": "서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+            "message": "서버 내부 오류가 발생했습니다.",
+        },
+        headers=_cors_headers(request),
+    )
 
 app.include_router(learning_router)
 
@@ -627,12 +676,31 @@ async def websocket_endpoint(websocket: WebSocket):
             {"type": "status", "stage": "asr"}, ensure_ascii=False
         ))
 
-        result = recognizer.recognize_once_async().get()
+        # [Candidate B] .get()은 동기 블로킹 → async 핸들러에서 직접 부르면
+        # 이벤트 루프가 멈춰 WS keepalive가 막히고 1006 드롭을 유발할 수 있다.
+        # 스레드로 오프로드한다. (Python 3.9+ asyncio.to_thread)
+        result = await asyncio.to_thread(
+            lambda: recognizer.recognize_once_async().get()
+        )
         result = cast(Any, result)
 
+        # [진단] 인식 결과의 실제 사유를 로깅한다. NoMatch / Canceled 구분이 핵심.
+        #  - NoMatch  → 정말로 음성이 안 들어온 것 (마이크/송신 경로)
+        #  - Canceled → Azure 키/리전/포맷/쿼터 문제 (error_details에 사유가 찍힘)
+        print(f"[ws/audio] recognize reason={result.reason}")
+        if result.reason == speechsdk.ResultReason.Canceled:
+            cancel = result.cancellation_details
+            print(
+                f"[ws/audio] CANCELED reason={cancel.reason} "
+                f"detail={cancel.error_details}"
+            )
+
         if result.reason != speechsdk.ResultReason.RecognizedSpeech:
+            detail = ""
+            if result.reason == speechsdk.ResultReason.Canceled:
+                detail = f" ({result.cancellation_details.error_details})"
             await websocket.send_text(json.dumps({
-                "error": "음성을 인식하지 못했습니다."
+                "error": f"음성을 인식하지 못했습니다.{detail}"
             }, ensure_ascii=False))
             return
 

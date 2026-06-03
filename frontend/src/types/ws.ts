@@ -78,16 +78,25 @@ export interface WsStatusMessage {
   stage: WsStage;
 }
 
+// ---------- 서버 → 클라이언트: 처리 에러 ----------
+/**
+ * 백엔드 main.py /ws/audio가 STT 인식 실패(NoMatch)나 내부 예외 시
+ * { "error": "..." } 형태로 1회 송신한 뒤 소켓을 닫는다.
+ * status/final과 달리 `type` 태그가 없는 레거시 형태이므로 `error` 키로 판별한다.
+ */
+export interface WsErrorMessage {
+  error: string;
+}
+
 // 서버 메시지 통합 타입
-export type WsServerMessage = WsStatusMessage | WsFinalResult;
+export type WsServerMessage = WsStatusMessage | WsFinalResult | WsErrorMessage;
 
 // ---------- 메시지 판별 헬퍼 ----------
 export function isStatusMessage(msg: unknown): msg is WsStatusMessage {
   return (
     typeof msg === "object" &&
     msg !== null &&
-    (msg as Record<string, unknown>).type === "status" &&
-    "stage" in msg
+    typeof (msg as Record<string, unknown>).error === "string"
   );
 }
 

@@ -1,8 +1,89 @@
-# backend/utils.py — 상단 import에 re 추가
-import re
-import whisper
+# backend/utils.py
 import os
+import re
+import tempfile
+
+import whisper
+import yt_dlp
 import fitz  # PyMuPDF
+
+
+# ─────────────────────────────────────────────────────────────
+# YouTube 스크립트 추출 — yt-dlp로 오디오 다운로드 후 Whisper로 STT
+# main.py /generate-questions 에서 호출.
+#  - 호출부 계약: 반환값이 falsy(빈 문자열)면 "유튜브 분석 실패"로 처리한다.
+#  - 단어별 재생 타임스탬프(TODO #9)와는 무관한 경로다.
+#    (그쪽은 Azure word_boundary로 처리 — Whisper 재분석 아님)
+# ─────────────────────────────────────────────────────────────
+
+# Whisper 모델은 로드 비용이 크므로 모듈 레벨에서 1회만 로드(지연 초기화).
+# 매 요청마다 load_model 하면 수 초~수십 초가 낭비된다.
+_WHISPER_MODEL = None
+
+
+def _get_whisper_model():
+    """Whisper 모델 지연 초기화 + 프로세스 단위 캐싱."""
+    global _WHISPER_MODEL
+    if _WHISPER_MODEL is None:
+        # base: 속도/정확도 균형. 환경변수 WHISPER_MODEL 로 교체 가능
+        # (tiny/base/small/medium/large).
+        model_name = os.getenv("WHISPER_MODEL", "base")
+        _WHISPER_MODEL = whisper.load_model(model_name)
+    return _WHISPER_MODEL
+
+
+def get_transcript_via_whisper(url: str) -> str:
+    """
+    YouTube URL의 오디오를 yt-dlp로 내려받아 Whisper로 전사한 텍스트를 반환.
+
+    실패(빈 URL / 다운로드 실패 / 전사 예외) 시 빈 문자열을 반환하여
+    호출부(main.py)가 일관되게 '유튜브 분석 실패'로 처리하도록 한다.
+
+    주의: Whisper의 transcribe는 내부적으로 ffmpeg로 오디오를 디코딩하므로
+    실행 환경에 ffmpeg가 설치되어 PATH에 등록돼 있어야 한다.
+    """
+    if not url:
+        return ""
+
+    # 임시 작업 디렉토리 — 함수 종료 시 finally에서 정리
+    tmp_dir = tempfile.mkdtemp(prefix="yt_audio_")
+    # 실제 컨테이너 포맷(webm/m4a 등)에 맞춰 yt-dlp가 확장자를 채운다.
+    out_template = os.path.join(tmp_dir, "audio.%(ext)s")
+
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "outtmpl": out_template,
+        "noplaylist": True,   # 재생목록 URL이라도 단일 영상만
+        "quiet": True,
+        "no_warnings": True,
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            downloaded_path = ydl.prepare_filename(info)
+
+        if not downloaded_path or not os.path.exists(downloaded_path):
+            print(f"⚠️ 오디오 다운로드 실패: {url}")
+            return ""
+
+        model = _get_whisper_model()
+        result = model.transcribe(downloaded_path)
+        return str(result.get("text", "")).strip()
+
+    except Exception as e:
+        print(f"❌ Whisper 전사 중 에러 발생: {e}")
+        return ""
+
+    finally:
+        # 임시 오디오/디렉토리 정리 (실패해도 본 흐름에 영향 없음)
+        try:
+            for name in os.listdir(tmp_dir):
+                os.remove(os.path.join(tmp_dir, name))
+            os.rmdir(tmp_dir)
+        except Exception:
+            pass
+
 
 # ─────────────────────────────────────────────────────────────
 # PII 마스킹 — 이력서 텍스트가 LLM(GPT)으로 가기 전에 적용

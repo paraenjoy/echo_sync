@@ -66,7 +66,7 @@ function isValidRoomState(s: unknown): s is RoomLocationState {
     typeof v.questionId === "number" &&
     typeof v.firstQuestion === "string" &&
     typeof v.position === "string" &&
-    typeof v.interviewMode === "string"
+    typeof v.interviewMode === "string" &&
     typeof v.maxQuestions === "number"
   );
 }
@@ -83,7 +83,7 @@ export type ChatMessage =
       result: WsFinalResult;
       localAudioUrl: string | null;
     }
-  | { kind: "error"; id: string; message: string };
+  | { kind: "error"; id: string; message: string }
   | { kind: "completion"; id: string; questionCount: number };
 
 const genId = () =>
