@@ -16,6 +16,8 @@ from sqlmodel import Session, select
 
 import azure.cognitiveservices.speech as speechsdk
 import google.generativeai as genai
+import httpx
+import uuid
 import urllib.parse
 import asyncio
 
@@ -401,14 +403,31 @@ def calculate_tech_stack_percent(full_transcript: str, metadata_json: Optional[s
     }
 
 
+# 1. 함수의 인자에 session_id를 추가하여 관리하면 더 좋습니다 (선택 사항)
 async def generate_persona_image(animal_generation_prompt: str):
     try:
         prompt = f"A detailed square profile picture of {animal_generation_prompt}. Anthropomorphic animal developer style. High quality digital art."
-        
         encoded_prompt = urllib.parse.quote(prompt)
-        image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true"
         
-        return image_url
+        pollinations_key = os.getenv("POLLINATIONS_API_KEY", "")
+        
+        # 2. 최신 엔드포인트 적용 및 key, model 파라미터 추가
+        url = f"https://gen.pollinations.ai/image/{encoded_prompt}?width=1024&height=1024&model=flux&key={pollinations_key}"
+        
+        # 3. 백엔드에서 이미지를 비동기로 다운로드 (타임아웃 여유 있게 30초 설정)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url)
+            response.raise_for_status() # HTTP 오류 시 Exception 발생
+            
+            # 4. 다운로드한 이미지를 기존에 마운트되어 있는 static/audio 폴더에 저장
+            filename = f"persona_{uuid.uuid4().hex[:8]}.jpg"
+            file_path = f"static/audio/{filename}" 
+            
+            with open(file_path, "wb") as f:
+                f.write(response.content)
+                
+            # 5. 프론트엔드가 바로 표시할 수 있는 안정적인 내부 정적 경로 반환
+            return f"/{file_path}"
 
     except Exception as img_err:
         print(f"AI 이미지 생성 실패: {img_err}")

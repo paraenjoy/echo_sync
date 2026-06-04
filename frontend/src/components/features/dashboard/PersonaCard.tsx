@@ -11,6 +11,7 @@
  */
 import { Link } from "react-router-dom";
 import type { LatestPersona } from "@/types/dashboard";
+import { API_BASE_URL } from "@/lib/constants";
 
 interface PersonaCardProps {
   persona: LatestPersona;
@@ -31,13 +32,20 @@ function formatDate(iso: string): string {
 }
 
 export function PersonaCard({ persona }: PersonaCardProps) {
+  // 2. 경로 보정 로직: 외부 http 링크(이전 데이터)면 그대로 쓰고, 상대 경로면 API_BASE_URL을 붙여줍니다.
+  const imageUrl = persona.animal_image_url
+    ? persona.animal_image_url.startsWith("http")
+      ? persona.animal_image_url
+      : `${API_BASE_URL.replace(/\/$/, "")}${persona.animal_image_url}`
+    : null;
+
   return (
     <div className="rounded-xl border border-border bg-bg-elevated p-6 animate-fade-up">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-        {/* 이미지 / 이니셜 폴백 */}
-        {persona.animal_image_url ? (
+        {/* 3. 보정된 imageUrl을 src에 적용합니다. */}
+        {imageUrl ? (
           <img
-            src={persona.animal_image_url}
+            src={imageUrl}
             alt={persona.animal_name}
             className="h-28 w-28 shrink-0 rounded-xl border border-border object-cover"
             loading="lazy"

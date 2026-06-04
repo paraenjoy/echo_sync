@@ -10,7 +10,7 @@ __pycache__/
 postgres_data/
 
 # 오디오 데이터 및 임시 파일
-static/audio/*.mp3
+static/audio/
 temp_uploads/
 temp_*
 

@@ -10,6 +10,7 @@
  * 디자인(DESIGN_SYSTEM.md): 의미 토큰. 점수에만 티어 색(데이터 전용).
  */
 import { TechStackPie } from "./TechStackPie";
+import { API_BASE_URL } from "@/lib/constants";
 import type { HistoryInterviewReport } from "@/types/history";
 
 interface InterviewReportSectionProps {
@@ -27,6 +28,13 @@ const fmt = (v: number | null) => (v === null ? "–" : Math.round(v).toString()
 export function InterviewReportSection({ report }: InterviewReportSectionProps) {
   const hasScores = report.overall_score !== null;
 
+  // 추가된 부분: 경로 보정 로직 (상대 경로인 경우 API_BASE_URL과 결합)
+  const imageUrl = report.animal_image_url
+    ? report.animal_image_url.startsWith("http")
+      ? report.animal_image_url
+      : `${API_BASE_URL.replace(/\/$/, "")}${report.animal_image_url}`
+    : null;
+
   const breakdown: { label: string; value: number | null }[] = [
     { label: "발음", value: report.pronunciation_avg },
     { label: "정확도", value: report.accuracy_avg },
@@ -41,9 +49,9 @@ export function InterviewReportSection({ report }: InterviewReportSectionProps) 
       {/* 페르소나 헤더 */}
       <div className="rounded-xl border border-border bg-bg-elevated p-6">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-          {report.animal_image_url ? (
+          {imageUrl ? (
             <img
-              src={report.animal_image_url}
+              src={imageUrl}
               alt={report.animal_name}
               className="h-28 w-28 shrink-0 rounded-xl border border-border object-cover"
               loading="lazy"
