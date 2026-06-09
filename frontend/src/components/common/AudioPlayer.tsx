@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { cn } from "@/lib/utils";
+import { cn, resolveStaticUrl } from "@/lib/utils";
 
 interface AudioPlayerProps {
   /** 재생할 오디오 URL. Blob URL 또는 서버 정적 경로(/static/audio/...) 모두 지원 */
@@ -26,17 +26,25 @@ interface AudioPlayerProps {
  * 3) timeupdate 가 한 번 발생하면 currentTime 을 0 으로 복귀시키고 핸들러 해제
  *
  * 서버 TTS(.mp3)는 정상적으로 duration 을 가지므로 1) 분기를 타지 않고 즉시 ready.
+ *
+ * URL 변환:
+ * - 백엔드가 "/static/audio/..." 같은 상대 경로를 반환하면
+ *   resolveStaticUrl()이 API_BASE_URL을 붙여 올바른 서버 origin으로 요청한다.
+ * - Blob URL / 이미 절대 URL이면 그대로 통과.
  */
 export function AudioPlayer({ src, label, className }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 서버 상대 경로 → 절대 URL 변환 (Blob URL / http(s) URL은 그대로)
+  const resolvedSrc = resolveStaticUrl(src) ?? src;
+
   // src 변경 시 상태 초기화 (질문 전환 등으로 재마운트되지 않을 때 대비)
   useEffect(() => {
     setIsReady(false);
     setError(null);
-  }, [src]);
+  }, [resolvedSrc]);
 
   const handleLoadedMetadata = () => {
     const el = audioRef.current;
@@ -81,7 +89,7 @@ export function AudioPlayer({ src, label, className }: AudioPlayerProps) {
       )}
       <audio
         ref={audioRef}
-        src={src}
+        src={resolvedSrc}
         controls
         preload="metadata"
         onLoadedMetadata={handleLoadedMetadata}

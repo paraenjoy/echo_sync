@@ -5,9 +5,16 @@ node_modules/
 dist/
 dist-ssr/
 
+# TypeScript 증분 빌드 캐시
+*.tsbuildinfo
+
+# Vite 의존성 프리번들 캐시
+.vite/
+
 # 환경 변수 (보안)
 .env
 .env.local
+.env.*.local
 
 # 기타 로그 및 캐시
 npm-debug.log*

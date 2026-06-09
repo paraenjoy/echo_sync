@@ -1,0 +1,11 @@
+[project]
+name = "echosync-backend"
+version = "0.1.0"
+description = "EchoSync (sync.) — AI Speaking Tutor & Mock Interview Backend"
+license = "MIT"
+requires-python = ">=3.10,<3.13"
+readme = "README.md"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"

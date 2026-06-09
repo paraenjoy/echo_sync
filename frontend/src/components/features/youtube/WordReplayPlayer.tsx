@@ -17,12 +17,16 @@
  *  - rAF 대신 timeupdate 이벤트로 충분 — 구간 경계 정밀도가 학습 용도에 적합하고
  *    구현이 단순하다.
  *
+ * URL 변환:
+ *  - 백엔드가 "/static/audio/..." 상대 경로를 반환하면 resolveStaticUrl()이
+ *    API_BASE_URL을 붙여 올바른 서버 origin으로 요청한다.
+ *
  * 디자인:
  *  - 디자인 토큰만 소비 (--bg-elevated / --border / --accent / --fg*).
  *  - 인라인 SVG 아이콘 (프로젝트 컨벤션 — 아이콘 라이브러리 미사용).
  */
 import { useEffect, useRef, useState } from "react";
-import { cn } from "@/lib/utils";
+import { cn, resolveStaticUrl } from "@/lib/utils";
 import type { WsWord } from "@/types/ws";
 
 interface WordReplayPlayerProps {
@@ -41,6 +45,9 @@ export function WordReplayPlayer({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 서버 상대 경로 → 절대 URL 변환
+  const resolvedUrl = resolveStaticUrl(audioUrl);
 
   const hasTiming =
     !!word &&
@@ -66,7 +73,7 @@ export function WordReplayPlayer({
 
   // 선택 단어가 바뀌면 자동 재생 (클릭 = 즉시 듣기)
   useEffect(() => {
-    if (hasTiming && audioUrl) {
+    if (hasTiming && resolvedUrl) {
       playSegment();
     } else {
       audioRef.current?.pause();
@@ -75,7 +82,7 @@ export function WordReplayPlayer({
     // word 참조 변화로 트리거 (부모가 매 클릭 새 객체를 전달한다고 가정).
     // playSegment는 클로저로 최신 word를 잡으므로 deps에서 제외해도 안전.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [word, audioUrl]);
+  }, [word, resolvedUrl]);
 
   // end 도달 시 구간 정지
   const handleTimeUpdate = () => {
@@ -108,7 +115,7 @@ export function WordReplayPlayer({
       {/* 컨트롤 대상 오디오 — 커스텀 UI를 위해 기본 컨트롤 숨김 */}
       <audio
         ref={audioRef}
-        src={audioUrl ?? undefined}
+        src={resolvedUrl ?? undefined}
         preload="auto"
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
@@ -128,11 +135,11 @@ export function WordReplayPlayer({
           <button
             type="button"
             onClick={togglePlay}
-            disabled={!hasTiming || !audioUrl}
+            disabled={!hasTiming || !resolvedUrl}
             aria-label={isPlaying ? "일시정지" : "재생"}
             className={cn(
               "grid place-items-center w-10 h-10 rounded-full shrink-0 transition-colors",
-              hasTiming && audioUrl
+              hasTiming && resolvedUrl
                 ? "bg-accent/15 text-accent hover:bg-accent/25"
                 : "bg-bg text-fg-subtle cursor-not-allowed"
             )}
@@ -160,10 +167,10 @@ export function WordReplayPlayer({
           <button
             type="button"
             onClick={playSegment}
-            disabled={!hasTiming || !audioUrl}
+            disabled={!hasTiming || !resolvedUrl}
             className={cn(
               "flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider shrink-0 transition-colors",
-              hasTiming && audioUrl
+              hasTiming && resolvedUrl
                 ? "text-fg-muted hover:text-accent"
                 : "text-fg-subtle cursor-not-allowed"
             )}

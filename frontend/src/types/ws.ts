@@ -57,8 +57,12 @@ export interface WsFinalResult {
   score: WsSentenceScore;
   words: WsWord[];
   feedback: string;
+  /** 사용자 발화를 Azure TTS로 정확히 발음한 음성 — 단어별 구간 재생 소스 */
   user_tts_url: string | null;
+  /** Gemini 모범답안을 Azure TTS로 합성한 음성 */
   model_tts_url: string | null;
+  /** 사용자 원본 녹음(PCM→WAV 저장) — 히스토리 재청취용 */
+  audio_url?: string | null;
   saved_log_id: number | null;
   /** 세션 종류. "interview"면 아래 꼬리질문 필드가 채워진다 */
   session_type?: string;
@@ -92,14 +96,25 @@ export interface WsErrorMessage {
 export type WsServerMessage = WsStatusMessage | WsFinalResult | WsErrorMessage;
 
 // ---------- 메시지 판별 헬퍼 ----------
+
+/**
+ * status 메시지 판별 — { type: "status", stage: "asr" | "scoring" | "coaching" }
+ *
+ * ⚠ 수정 이력: 기존 구현이 `error` 키를 검사하는 오류가 있었다
+ *   (isErrorMessage와 본문이 동일). type === "status" + stage 존재 여부로 정정.
+ */
 export function isStatusMessage(msg: unknown): msg is WsStatusMessage {
   return (
     typeof msg === "object" &&
     msg !== null &&
-    typeof (msg as Record<string, unknown>).error === "string"
+    (msg as Record<string, unknown>).type === "status" &&
+    typeof (msg as Record<string, unknown>).stage === "string"
   );
 }
 
+/**
+ * final 결과 판별 — `user_said` 키 존재 여부로 (하위호환, type 태그 없는 레거시도 흡수).
+ */
 export function isFinalResult(msg: unknown): msg is WsFinalResult {
   return typeof msg === "object" && msg !== null && "user_said" in msg;
 }

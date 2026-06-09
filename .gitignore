@@ -1,0 +1,10 @@
+# OS 설정
+.DS_Store
+Thumbs.db
+
+# IDE 설정
+.vscode/
+.idea/
+
+# 바이너리 실행 파일 (대용량)
+*.exe

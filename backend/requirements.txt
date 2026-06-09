@@ -1,19 +1,34 @@
+# ── 웹 프레임워크 ──
 fastapi
 uvicorn[standard]
 websockets
 python-dotenv
 python-multipart
-yt-dlp
-openai-whisper
-numpy
-PyMuPDF
+
+# ── 데이터베이스 ──
 sqlmodel
 sqlalchemy
 psycopg2-binary
-azure-cognitiveservices-speech
-google-generativeai
+
+# ── 인증 ──
 passlib[bcrypt]
 bcrypt<4.1
 pyjwt
 email-validator
+
+# ── AI / Speech ──
+azure-cognitiveservices-speech
+google-generativeai
+google-api-core
+openai-whisper
+
+# ── OpenAI (선택 — OPENAI_API_KEY 사용 시 필요) ──
+openai
+
+# ── 미디어 / 문서 처리 ──
+yt-dlp
+pypdf
+numpy
+
+# ── HTTP 클라이언트 ──
 httpx

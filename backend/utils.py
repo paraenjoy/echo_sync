@@ -5,7 +5,7 @@ import tempfile
 
 import whisper
 import yt_dlp
-import fitz  # PyMuPDF
+from pypdf import PdfReader
 
 
 # ─────────────────────────────────────────────────────────────
@@ -131,11 +131,13 @@ def extract_text_from_pdf(file_path):
     PDF 파일에서 텍스트를 추출함.
     추출 직후 mask_pii로 민감 정보를 익명화하여 반환한다.
     (feedback.md Q5 — 이력서 개인정보 보호)
+
+    pypdf(BSD-3-Clause)를 사용 — 프로젝트 MIT 라이선스와 호환.
+    기존 PyMuPDF(AGPL-3.0)에서 교체됨.
     """
     try:
-        doc = fitz.open(file_path)
-        text = "".join([page.get_text() for page in doc])
-        doc.close()
+        reader = PdfReader(file_path)
+        text = "".join([page.extract_text() or "" for page in reader.pages])
 
         if not text.strip():
             print("⚠️ PDF에서 추출된 텍스트가 없습니다.")
