@@ -151,25 +151,23 @@ export default function HistoryPage() {
               })}
             </ul>
 
-            {/* ── 페이지네이션 푸터 ───────────────────────── */}
-            <div className="mt-6 grid place-items-center min-h-[60px]">
-              {isFetchingNextPage ? (
-                <NextPageLoader />
-              ) : hasNextPage ? (
-                // observer가 작동하지 않는 환경(키보드 사용, 짧은 리스트 등)을 위한 fallback 버튼
-                <button
-                  type="button"
-                  onClick={() => fetchNextPage()}
-                  className="text-xs font-mono uppercase tracking-wider text-fg-subtle hover:text-accent transition-colors"
-                >
-                  더 불러오기
-                </button>
-              ) : (
-                <p className="text-[11px] font-mono uppercase tracking-[0.18em] text-fg-subtle">
-                  · 끝 ·
-                </p>
-              )}
-            </div>
+            {/* ── 페이지네이션 푸터 (불러올 게 있을 때만 렌더) ─── */}
+            {(isFetchingNextPage || hasNextPage) && (
+              <div className="mt-6 grid place-items-center min-h-[60px]">
+                {isFetchingNextPage ? (
+                  <NextPageLoader />
+                ) : (
+                  // observer가 작동하지 않는 환경(키보드 사용, 짧은 리스트 등)을 위한 fallback 버튼
+                  <button
+                    type="button"
+                    onClick={() => fetchNextPage()}
+                    className="text-xs font-mono uppercase tracking-wider text-fg-subtle hover:text-accent transition-colors"
+                  >
+                    더 불러오기
+                  </button>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -236,7 +234,7 @@ function EmptyState() {
         아직 <span className="text-accent">기록</span>이 없어요
       </h3>
       <p className="text-fg-muted text-sm leading-relaxed mb-7 max-w-md mx-auto">
-        첫 연습을 마치면 이곳에 세션이 차곡차곡 쌓여요. 영상으로 시작해볼까요?
+        첫 연습을 마치면 이곳에 세션이 차곡차곡 쌓여요. 한번 시작해볼까요?
       </p>
       <div className="flex justify-center gap-3 flex-wrap">
         <Link

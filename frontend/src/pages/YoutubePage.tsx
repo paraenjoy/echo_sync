@@ -115,6 +115,7 @@ export default function YoutubePage() {
 
           <p className="text-fg-muted text-lg leading-relaxed mb-10 max-w-prose">
             YouTube 링크만 붙여넣으면 끝. 영상 내용으로 만든 질문에 답하며
+            <br />
             발음 피드백까지 받아보세요.
           </p>
 
@@ -347,7 +348,7 @@ function ResultSection({
             Listen & Compare
           </p>
 
-          {localAudioUrl && <AudioPlayer label="내 발화" src={localAudioUrl} />}
+          {localAudioUrl && <AudioPlayer label="내 음성" src={localAudioUrl} />}
 
           {result.model_tts_url && (
             <AudioPlayer label="모범 발음" src={result.model_tts_url} />

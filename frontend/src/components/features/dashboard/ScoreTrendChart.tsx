@@ -97,8 +97,7 @@ export function ScoreTrendChart({ data }: ScoreTrendChartProps) {
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-fg-subtle mb-1">
             Recent sessions
-          </p>
-          <h3 className="font-display text-xl leading-tight">점수 추이</h3>
+          </p>          
         </div>
         {/* 범례 (토큰 색 직접 매핑) */}
         <ul className="flex flex-wrap gap-3">

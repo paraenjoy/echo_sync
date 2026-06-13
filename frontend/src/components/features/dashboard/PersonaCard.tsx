@@ -84,9 +84,9 @@ export function PersonaCard({ persona }: PersonaCardProps) {
             <span className="font-mono text-[11px] tabular-nums text-fg-subtle">
               {formatDate(persona.created_at)}
             </span>
-            {/* latest_persona엔 session_id가 없어 특정 리포트 직링크 불가 → 목록으로 */}
+            {/* session_id로 해당 면접 리포트 상세에 직링크 */}
             <Link
-              to="/history"
+              to={`/history/${persona.session_id}`}
               className="text-xs text-fg-subtle transition-colors hover:text-accent"
             >
               히스토리에서 보기 →

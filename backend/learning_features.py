@@ -392,6 +392,7 @@ def get_dashboard(
     if latest_report:
         report = latest_report[0]
         dashboard["latest_persona"] = {
+            "session_id": report.session_id,
             "animal_name": report.animal_name,
             "animal_reason": report.animal_reason,
             "animal_image_url": report.animal_image_url,

@@ -25,6 +25,13 @@
  *    status를 "completed"로 전환하여 InterviewRoomPage가 localAudioUrl을 확실히 캡처.
  *    reset()에서 Blob URL을 해제하지 않음 — 호출자(InterviewRoomPage)가 messages에
  *    저장한 URL을 계속 참조할 수 있도록.
+ *  - [녹음 꼬리 버그 수정] 기존에는 MediaRecorder.stop()을 "최종 결과 수신 시점"에
+ *    호출해, 사용자가 녹음 중지를 눌러도 분석 대기("분석 중") 구간의 마이크 소리가
+ *    로컬 Blob에 함께 녹음됐다. (서버 audio_url은 stop 시 processor를 끊으므로 정상)
+ *    → MediaRecorder.stop()을 stop() 시점으로 앞당겨 Blob을 중지 지점까지만 캡처.
+ *      단, "localAudioUrl이 completed보다 먼저 준비된다"는 보장은 유지하기 위해
+ *      recorder flush 완료 플래그(recorderDoneRef)와 대기 큐(pendingFinalRef)로
+ *      최종 결과/녹음 종료 두 비동기 이벤트의 순서를 동기화한다.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
@@ -208,6 +215,16 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
   const currentParamsRef = useRef<StartParams | null>(null);
   const isMountedRef = useRef(true);
 
+  // ---------- 녹음 종료 ↔ 최종 결과 순서 동기화용 레퍼런스 ----------
+  // recorderDoneRef: MediaRecorder가 onstop으로 Blob flush를 끝냈는지(또는 레코더가
+  //   애초에 없어 기다릴 필요가 없는지) 여부.
+  // recordedUrlRef: onstop에서 생성된 로컬 Blob URL(없으면 null).
+  // pendingFinalRef: 레코더 flush보다 서버 최종 결과가 먼저 도착했을 때 보관해 두는 큐.
+  //   onstop이 끝나는 즉시 이 결과로 completed 전환을 마무리한다.
+  const recorderDoneRef = useRef(false);
+  const recordedUrlRef = useRef<string | null>(null);
+  const pendingFinalRef = useRef<WsFinalResult | null>(null);
+
   // ---------- 안전 setState ----------
   const safeSet = useCallback(
     <T,>(setter: (v: T) => void, value: T) => {
@@ -308,6 +325,19 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
     };
   }, [cleanup]);
 
+  // ---------- 완료 처리 (단일 경로) ----------
+  // 서버 최종 결과 + 로컬 Blob URL이 모두 준비됐을 때 호출되어 completed로 전환한다.
+  // stop()의 recorder.onstop과 onmessage의 isFinalResult 분기 양쪽에서 공유한다.
+  const finalize = useCallback(
+    (data: WsFinalResult) => {
+      if (recordedUrlRef.current) safeSet(setLocalAudioUrl, recordedUrlRef.current);
+      safeSet(setResult, data);
+      safeSet(setStatus, "completed");
+      cleanup();
+    },
+    [cleanup, safeSet]
+  );
+
   // ---------- start ----------
   const start = useCallback(
     async (params: StartParams) => {
@@ -344,6 +374,11 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
         if (prev) URL.revokeObjectURL(prev);
         return null;
       });
+
+      // 녹음/최종결과 동기화 ref 초기화 (이전 세션 잔존값 제거)
+      recorderDoneRef.current = false;
+      recordedUrlRef.current = null;
+      pendingFinalRef.current = null;
 
       currentParamsRef.current = params;
       safeSet(setError, null);
@@ -518,41 +553,15 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
 
           // 3) 최종 결과 수신
           if (isFinalResult(data)) {
-            // ── 핵심 수정: Blob URL 경쟁 조건 해결 ──
-            // 기존 코드는 recorder.onstop(비동기)을 설정한 뒤 즉시
-            // setResult/setStatus("completed")를 호출했다.
-            // → InterviewRoomPage의 useEffect가 완료 상태를 감지할 때
-            //   localAudioUrl이 아직 null이어서 messages에 null이 저장됨.
-            //
-            // 수정: setResult/setStatus를 onstop 콜백 안으로 이동하여
-            // Blob URL이 생성된 뒤에만 completed 전환이 일어나게 한다.
-            const recorder = mediaRecorderRef.current;
-
-            const completeWithUrl = (blobUrl: string | null) => {
-              if (blobUrl) safeSet(setLocalAudioUrl, blobUrl);
-              safeSet(setResult, data as WsFinalResult);
-              safeSet(setStatus, "completed");
-              cleanup();
-            };
-
-            if (recorder && recorder.state !== "inactive") {
-              const blobType = recorder.mimeType || "audio/webm";
-              recorder.onstop = () => {
-                const blob = new Blob(localChunksRef.current, {
-                  type: blobType,
-                });
-                const objUrl = URL.createObjectURL(blob);
-                completeWithUrl(objUrl);
-              };
-              try {
-                recorder.stop();
-              } catch {
-                // recorder.stop() 실패 시 Blob URL 없이 완료
-                completeWithUrl(null);
-              }
+            // 로컬 Blob 녹음은 stop() 시점에 이미 종료를 시작했다.
+            // 여기서는 레코더를 건드리지 않고, flush 완료 여부만 보고 분기한다.
+            //  - recorderDoneRef === true  → Blob URL 준비 완료(or 레코더 없음) → 즉시 완료
+            //  - 아직 flush 전              → pendingFinalRef에 보관 → recorder.onstop이 마무리
+            const final = data as WsFinalResult;
+            if (recorderDoneRef.current) {
+              finalize(final);
             } else {
-              // MediaRecorder가 없거나 이미 inactive → Blob URL 없이 완료
-              completeWithUrl(null);
+              pendingFinalRef.current = final;
             }
           }
         } catch (err) {
@@ -582,7 +591,7 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
         safeSet(setStatus, "error");
       };
     },
-    [token, cleanup, safeSet, status]
+    [token, cleanup, safeSet, status, finalize]
   );
 
   // ---------- stop ----------
@@ -607,6 +616,45 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
       processorRef.current = null;
     }
 
+    // 1-b) 로컬 녹음(MediaRecorder)도 이 시점에 즉시 종료한다.
+    //   → Blob이 "분석 중" 대기 구간을 포함하지 않고 중지 지점까지만 캡처된다.
+    //   onstop은 비동기로 한 박자 늦게 발생하므로, Blob URL이 만들어지면
+    //   recorderDoneRef를 세우고, 이미 도착해 대기 중인 최종 결과가 있으면 마무리한다.
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      const blobType = recorder.mimeType || "audio/webm";
+      recorder.onstop = () => {
+        try {
+          const blob = new Blob(localChunksRef.current, { type: blobType });
+          recordedUrlRef.current = URL.createObjectURL(blob);
+          safeSet(setLocalAudioUrl, recordedUrlRef.current);
+        } catch {
+          recordedUrlRef.current = null;
+        }
+        recorderDoneRef.current = true;
+        // 서버 최종 결과가 먼저 도착해 대기 중이면 지금 완료 처리
+        if (pendingFinalRef.current) {
+          const pending = pendingFinalRef.current;
+          pendingFinalRef.current = null;
+          finalize(pending);
+        }
+      };
+      try {
+        recorder.stop();
+      } catch {
+        // stop 실패 시 Blob 없이 진행 — 더 기다리지 않도록 done 처리
+        recorderDoneRef.current = true;
+        if (pendingFinalRef.current) {
+          const pending = pendingFinalRef.current;
+          pendingFinalRef.current = null;
+          finalize(pending);
+        }
+      }
+    } else {
+      // 레코더가 없거나 이미 비활성 → 기다릴 녹음이 없음
+      recorderDoneRef.current = true;
+    }
+
     // 2) 서버에 분석 트리거 송신
     const stopMsg: WsClientMessage = {
       type: "stop",
@@ -625,7 +673,7 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
       safeSet(setStatus, "error");
       cleanup();
     }
-  }, [cleanup, safeSet]);
+  }, [cleanup, safeSet, finalize]);
 
   // ---------- reset ----------
   const reset = useCallback(() => {
@@ -643,6 +691,9 @@ export function useAudioStreamer(): UseAudioStreamerReturn {
     safeSet(setStage, null);
     currentParamsRef.current = null;
     localChunksRef.current = [];
+    recorderDoneRef.current = false;
+    recordedUrlRef.current = null;
+    pendingFinalRef.current = null;
   }, [cleanup, safeSet]);
 
   return {

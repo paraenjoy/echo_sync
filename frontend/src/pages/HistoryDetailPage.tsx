@@ -324,6 +324,11 @@ function AnswerBlock({
         </div>
       )}
 
+      {/* 내 발음 교정(user_tts) — 단어 분석 바로 위에 배치해 교정 음성을 먼저 듣게 한다 */}
+      {log.user_tts_url && (
+        <InlineAudio label="내 발음 교정" src={log.user_tts_url} />
+      )}
+
       {/* 단어별 발음 정확도 — word_logs 연동 (BACKEND_PR.md TODO #3 ✅) */}
       {/* 백엔드가 이미 WsWord 스키마(accuracy/phonemes)로 변환해 보내므로 그대로 전달 */}
       {log.word_logs && log.word_logs.length > 0 && (
@@ -347,17 +352,13 @@ function AnswerBlock({
         </div>
       )}
 
-      {/* 음성 비교 — 세 소스의 의미가 모두 다름:
+      {/* 음성 비교 — 두 소스의 의미가 다름 (내 발음 교정(user_tts)은 위 단어 분석 옆으로 이동):
           · audio_url    = 사용자 원본 녹음 (진짜 "내 음성")
-          · user_tts_url = 사용자 문장을 Azure TTS가 정확히 발음한 교정 음성
           · model_tts_url = 모범 답안 TTS */}
-      {(log.audio_url || log.user_tts_url || log.model_tts_url) && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {(log.audio_url || log.model_tts_url) && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {log.audio_url && (
             <InlineAudio label="내 음성" src={log.audio_url} />
-          )}
-          {log.user_tts_url && (
-            <InlineAudio label="내 발음 교정" src={log.user_tts_url} />
           )}
           {log.model_tts_url && (
             <InlineAudio label="모범 답안" src={log.model_tts_url} />

@@ -327,6 +327,98 @@ async def generate_native_audio(text, file_name, capture_word_timings=False):
     return (None, []) if capture_word_timings else None
 
 
+# ─────────────────────────────────────────────────────────────
+# 음소(SAPI) → 예시 단어 매핑 (대시보드 음소 클릭 TTS용)
+#   - Azure 발음평가는 phoneme_alphabet 미지정 시 SAPI 음소 세트를 반환한다.
+#   - IPA 기호는 그대로 합성되지 않으므로, "예시 단어"를 기본 음원으로 삼고
+#     SSML <phoneme alphabet="sapi">로 순수 음소를 함께 들려준다.
+# ─────────────────────────────────────────────────────────────
+PHONEME_EXAMPLE_WORDS: dict[str, str] = {
+    # 모음
+    "aa": "father", "ae": "cat", "ah": "cup", "ao": "thought",
+    "aw": "cow", "ax": "about", "ay": "my", "eh": "bed",
+    "er": "bird", "ey": "day", "ih": "sit", "iy": "see",
+    "ow": "go", "oy": "boy", "uh": "book", "uw": "blue",
+    # 자음
+    "b": "boy", "ch": "church", "d": "dog", "dh": "this",
+    "f": "fish", "g": "go", "h": "hat", "hh": "hat",
+    "jh": "jump", "k": "key", "l": "lion", "m": "man",
+    "n": "no", "ng": "sing", "p": "pen", "r": "red",
+    "s": "sun", "sh": "ship", "t": "top", "th": "think",
+    "v": "van", "w": "wet", "y": "yes", "z": "zoo", "zh": "vision",
+}
+
+
+def _normalize_phoneme(phoneme: str) -> str:
+    """대시보드에서 전달된 음소 토큰 정규화 (소문자 + 후행 강세 숫자 제거)."""
+    return re.sub(r"\d+$", "", (phoneme or "").strip().lower())
+
+
+def _xml_escape(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+async def generate_phoneme_audio(phoneme: str):
+    """
+    음소 하나를 TTS로 합성해 (mp3 URL, 예시 단어)를 반환.
+
+    전략(피드백: "예시 단어 우선, 가능하면 순수 음소"):
+      1) SSML로 [순수 음소] + "as in [예시 단어]"를 합성 → 예시 단어가 항상 포함된다.
+      2) SSML 합성 실패 시 예시 단어를 평문으로만 합성 (generate_native_audio 재사용).
+      3) 모두 실패하면 (None, 예시 단어).
+
+    같은 음소는 파일명을 재사용해 중복 합성을 피한다 (static/audio 캐시).
+    """
+    norm = _normalize_phoneme(phoneme)
+    if not norm:
+        return (None, None)
+
+    example_word = PHONEME_EXAMPLE_WORDS.get(norm)
+    file_name = f"phoneme_{norm}"
+    audio_path = f"static/audio/{file_name}.mp3"
+    url = f"/static/audio/{file_name}.mp3"
+
+    # 캐시 히트: 정상 크기의 파일이 이미 있으면 즉시 반환 (빈/깨진 파일은 무시)
+    if os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
+        return (url, example_word)
+
+    if not AZURE_KEY or not AZURE_REGION:
+        return (None, example_word)
+
+    speech_config = speechsdk.SpeechConfig(subscription=AZURE_KEY, region=AZURE_REGION)
+    speech_config.speech_synthesis_voice_name = "en-US-JennyNeural"
+    audio_config = speechsdk.audio.AudioOutputConfig(filename=audio_path)
+    synthesizer = speechsdk.SpeechSynthesizer(
+        speech_config=speech_config, audio_config=audio_config
+    )
+
+    # ── 1) SSML: 순수 음소 + 예시 단어 ─────────────────────────
+    if example_word:
+        ph_attr = _xml_escape(norm)
+        word_text = _xml_escape(example_word)
+        ssml = (
+            '<speak version="1.0" '
+            'xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">'
+            '<voice name="en-US-JennyNeural">'
+            f'<prosody rate="-12%"><phoneme alphabet="sapi" ph="{ph_attr}">'
+            f'{ph_attr}</phoneme></prosody>'
+            '<break time="350ms"/>'
+            f'as in <break time="120ms"/>{word_text}.'
+            '</voice></speak>'
+        )
+        try:
+            result = cast(Any, synthesizer.speak_ssml_async(ssml).get())
+            if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+                return (url, example_word)
+        except Exception:
+            pass  # 아래 평문 폴백으로 진행
+
+    # ── 2) 폴백: 예시 단어(없으면 음소 토큰)를 평문으로 합성 ─────
+    fallback_text = example_word or norm
+    fallback_url = await generate_native_audio(fallback_text, file_name)
+    return (fallback_url, example_word)
+
+
 def save_pcm_as_wav(
     audio_bytes: bytearray,
     user_id: int,
@@ -513,6 +605,33 @@ def read_me(current_user: User = Depends(get_current_user)):
         "email": current_user.email,
         "nickname": current_user.nickname,
         "role": current_user.role,
+    }
+
+
+@app.get("/tts/phoneme")
+async def tts_phoneme(
+    ph: str = Query(..., min_length=1, max_length=8, description="음소 토큰(SAPI)"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    음소 하나를 TTS로 합성해 재생용 mp3 URL을 반환한다.
+    (대시보드 누적 발음 분석 — 음소 카드 클릭 시 발음 듣기)
+
+    반환: { audio_url, phoneme, example_word }
+      - audio_url: /static 상대 경로 (프론트에서 resolveStaticUrl로 절대화)
+      - example_word: 매핑된 예시 단어 (없으면 null)
+    합성 실패 시 503.
+    """
+    url, example_word = await generate_phoneme_audio(ph)
+    if not url:
+        raise HTTPException(
+            status_code=503,
+            detail="음성 합성에 실패했어요. 잠시 후 다시 시도해주세요.",
+        )
+    return {
+        "audio_url": url,
+        "phoneme": _normalize_phoneme(ph),
+        "example_word": example_word,
     }
 
 

@@ -2,10 +2,16 @@
  * RecommendationsPanel — 맞춤 학습 추천 (대시보드)
  *
  * 데이터: GET /recommendations (RecommendationsResponse)
- *  - weak_points: 약점 요약(백엔드가 최소 1개 보장)
  *  - weak_words: 낮은 점수 단어 (avg_score는 점수 티어 색으로 — 데이터 전용)
- *  - practice_sentences: 추천 연습 문장 (없을 수 있어 비면 숨김)
- *  - recommendation_strategy: 학습 전략
+ *  - practice_sentences: 추천 연습 문장 (최대 4개만 노출)
+ *
+ * 레이아웃:
+ *  - 좌: 낮은 점수 단어 / 우: 추천 연습 문장 (md 이상 2열)
+ *  - 두 카드는 같은 행에서 grid stretch + h-full로 높이를 통일한다.
+ *
+ * 참고:
+ *  - 백엔드는 weak_points·recommendation_strategy도 함께 보내지만(타입에는 유지),
+ *    피드백에 따라 "약점"·"학습 전략" 카드는 더 이상 렌더링하지 않는다.
  *
  * 디자인(DESIGN_SYSTEM.md): 의미 토큰만. 점수 색(score-*)은 단어 점수에만 적용.
  */
@@ -15,6 +21,9 @@ interface RecommendationsPanelProps {
   data: RecommendationsResponse;
 }
 
+/** 추천 연습 문장 최대 노출 개수 */
+const MAX_PRACTICE_SENTENCES = 4;
+
 /** 점수 → 티어 텍스트 색 (DESIGN_SYSTEM 임계: <60 low, 60-89 mid, ≥90 high) */
 function scoreColor(score: number): string {
   if (score >= 90) return "score-high";
@@ -23,26 +32,15 @@ function scoreColor(score: number): string {
 }
 
 export function RecommendationsPanel({ data }: RecommendationsPanelProps) {
-  const { weak_points, weak_words, practice_sentences, recommendation_strategy } =
-    data;
+  const { weak_words, practice_sentences } = data;
+
+  // 최대 4개로 제한
+  const sentences = practice_sentences.slice(0, MAX_PRACTICE_SENTENCES);
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {/* 약점 */}
-      <Card title="약점" eyebrow="Focus">
-        <ul className="flex flex-wrap gap-2">
-          {weak_points.map((point, i) => (
-            <li
-              key={i}
-              className="rounded-md border border-border bg-bg-subtle px-2.5 py-1 text-sm text-fg-muted"
-            >
-              {point}
-            </li>
-          ))}
-        </ul>
-      </Card>
-
-      {/* 낮은 점수 단어 */}
+    // items-stretch(기본) + 카드 h-full로 좌/우 카드 높이를 통일
+    <div className="grid items-stretch gap-4 md:grid-cols-2">
+      {/* 좌 — 낮은 점수 단어 */}
       <Card title="낮은 점수 단어" eyebrow="Weak words">
         {weak_words.length > 0 ? (
           <ul className="space-y-1.5">
@@ -70,11 +68,11 @@ export function RecommendationsPanel({ data }: RecommendationsPanelProps) {
         )}
       </Card>
 
-      {/* 추천 연습 문장 — 비면 섹션 숨김 */}
-      {practice_sentences.length > 0 && (
-        <Card title="추천 연습 문장" eyebrow="Practice">
+      {/* 우 — 추천 연습 문장 (최대 4개) */}
+      <Card title="추천 연습 문장" eyebrow="Practice">
+        {sentences.length > 0 ? (
           <ol className="space-y-2">
-            {practice_sentences.map((sentence, i) => (
+            {sentences.map((sentence, i) => (
               <li key={i} className="flex gap-2.5 text-sm leading-relaxed">
                 <span className="font-mono text-xs text-fg-subtle tabular-nums pt-0.5">
                   {String(i + 1).padStart(2, "0")}
@@ -83,22 +81,10 @@ export function RecommendationsPanel({ data }: RecommendationsPanelProps) {
               </li>
             ))}
           </ol>
-        </Card>
-      )}
-
-      {/* 학습 전략 */}
-      {recommendation_strategy.length > 0 && (
-        <Card title="학습 전략" eyebrow="Strategy">
-          <ul className="space-y-2">
-            {recommendation_strategy.map((tip, i) => (
-              <li key={i} className="flex gap-2.5 text-sm leading-relaxed">
-                <span className="mt-2 inline-block h-1 w-1 shrink-0 rounded-full bg-accent" />
-                <span className="text-fg-muted">{tip}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
+        ) : (
+          <p className="text-sm text-fg-subtle">추천할 연습 문장이 아직 없어요.</p>
+        )}
+      </Card>
     </div>
   );
 }
@@ -114,7 +100,7 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-bg-elevated p-5 animate-fade-up">
+    <div className="h-full rounded-xl border border-border bg-bg-elevated p-5 animate-fade-up">
       <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-fg-subtle">
         {eyebrow}
       </p>

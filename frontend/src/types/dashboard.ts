@@ -31,6 +31,8 @@ export interface RecentScore {
 
 /** 최신 동물 페르소나 요약 (latest_persona) — 점수 미산출 시 overall_score=null */
 export interface LatestPersona {
+  /** 이 페르소나를 생성한 면접 세션 ID (히스토리 상세 직링크용) */
+  session_id: number;
   animal_name: string;
   animal_reason: string;
   animal_image_url: string | null;

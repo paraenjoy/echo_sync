@@ -9,7 +9,6 @@
  *
  * 상태 분리(HANDOFF): 사용자/토큰은 Zustand(authStore), 서버 데이터는 React Query.
  */
-import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { useCumulativeAnalysis } from "@/hooks/queries/useCumulativeAnalysis";
@@ -18,8 +17,6 @@ import { useRecommendations } from "@/hooks/queries/useRecommendations";
 import { ProcessingSkeleton } from "@/components/common/ProcessingSkeleton";
 import { UserMenu } from "@/components/common/UserMenu";
 import { PhonemeHeatmap } from "@/components/features/dashboard/PhonemeHeatmap";
-import { GoalProgressWidget } from "@/components/features/dashboard/GoalProgressWidget";
-import { GoalSettingModal } from "@/components/features/dashboard/GoalSettingModal";
 import { PersonaCard } from "@/components/features/dashboard/PersonaCard";
 import { ScoreTrendChart } from "@/components/features/dashboard/ScoreTrendChart";
 import { RecommendationsPanel } from "@/components/features/dashboard/RecommendationsPanel";
@@ -31,8 +28,6 @@ export default function DashboardPage() {
   const analysisQuery = useCumulativeAnalysis(user?.id ?? null);
   const dashboardQuery = useDashboard();
   const recommendationsQuery = useRecommendations();
-
-  const [goalModalOpen, setGoalModalOpen] = useState(false);
 
   const displayName =
     user?.nickname?.trim() ||
@@ -62,25 +57,32 @@ export default function DashboardPage() {
           </p>
         </header>
 
-        {/* ── 목표 / 달성률 ─────────────────────────────────── */}
+        {/* ── 빠른 진입 카드 (최상단) ───────────────────────── */}
         <section className="mb-16">
-          <SectionHeader eyebrow="Goal" title="목표 달성률" />
-
-          {dashboardQuery.isPending && <ProcessingSkeleton />}
-
-          {dashboardQuery.isError && (
-            <div className="p-4 rounded-md bg-score-low/10 border border-score-low/30 text-sm text-score-low">
-              {getErrorMessage(dashboardQuery.error)}
-            </div>
-          )}
-
-          {dashboardQuery.isSuccess && (
-            <GoalProgressWidget
-              goal={dashboardQuery.data.goal}
-              progress={dashboardQuery.data.goal_progress}
-              onEdit={() => setGoalModalOpen(true)}
+          <SectionHeader eyebrow="Quick Start" title="바로 시작하기" />
+          <nav className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <QuickLink
+              to="/youtube"
+              eyebrow="YouTube"
+              title="영상으로 연습"
+              description="자막에서 뽑은 질문으로 회화 훈련"
+              icon={<IconYoutube />}
             />
-          )}
+            <QuickLink
+              to="/interview/setup"
+              eyebrow="Interview"
+              title="AI 면접 시작"
+              description="이력서·기술 스택 기반 모의 면접"
+              icon={<IconInterview />}
+            />
+            <QuickLink
+              to="/history"
+              eyebrow="History"
+              title="히스토리 보기"
+              description="과거 세션과 상세 리포트"
+              icon={<IconHistory />}
+            />
+          </nav>
         </section>
 
         {/* ── 최신 페르소나 (면접 완료 시) ──────────────────── */}
@@ -135,42 +137,7 @@ export default function DashboardPage() {
             <AnalysisContent data={analysisQuery.data} />
           )}
         </section>
-
-        {/* ── 빠른 진입 카드 ───────────────────────────────── */}
-        <section>
-          <SectionHeader eyebrow="Quick Start" title="바로 시작하기" />
-          <nav className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <QuickLink
-              to="/youtube"
-              eyebrow="YouTube"
-              title="영상으로 연습"
-              description="자막에서 뽑은 질문으로 회화 훈련"
-              icon={<IconYoutube />}
-            />
-            <QuickLink
-              to="/interview/setup"
-              eyebrow="Interview"
-              title="AI 면접 시작"
-              description="이력서·기술 스택 기반 모의 면접"
-              icon={<IconInterview />}
-            />
-            <QuickLink
-              to="/history"
-              eyebrow="History"
-              title="히스토리 보기"
-              description="과거 세션과 상세 리포트"
-              icon={<IconHistory />}
-            />
-          </nav>
-        </section>
       </div>
-
-      {/* 목표 설정/수정 모달 (open-gated) */}
-      <GoalSettingModal
-        open={goalModalOpen}
-        onClose={() => setGoalModalOpen(false)}
-        initialGoal={dashboardQuery.data?.goal ?? null}
-      />
     </main>
   );
 }
@@ -196,16 +163,10 @@ function AnalysisContent({
           첫 연습을 마치면 <span className="text-accent">여기</span>에
           분석이 쌓여요
         </h3>
-        <p className="text-fg-muted text-sm leading-relaxed mb-6 max-w-md mx-auto">
+        <p className="text-fg-muted text-sm leading-relaxed max-w-md mx-auto">
           {data.summary ??
             "아직 분석할 데이터가 충분하지 않아요. 몇 차례 연습하면 약점 음소가 보이기 시작합니다."}
         </p>
-        <Link
-          to="/youtube"
-          className="inline-block px-5 py-2.5 rounded-md bg-accent text-accent-fg text-sm hover:bg-accent-hover transition-colors"
-        >
-          첫 연습 시작하기
-        </Link>
       </div>
     );
   }
