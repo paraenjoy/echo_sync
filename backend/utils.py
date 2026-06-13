@@ -1,11 +1,97 @@
 # backend/utils.py
 import os
 import re
+import shutil
 import tempfile
 
 import whisper
 import yt_dlp
 from pypdf import PdfReader
+
+
+# ─────────────────────────────────────────────────────────────
+# ffmpeg 경로 보장 (Mac에서 YouTube 질문 생성이 안 되던 근본 원인 해결)
+#
+# Whisper의 transcribe()는 내부적으로 `ffmpeg` CLI를 subprocess로 호출한다.
+#   (openai-whisper/audio.py → run(["ffmpeg", ...]) — "Requires the ffmpeg CLI in PATH")
+# 즉, 백엔드를 실행한 프로세스의 PATH에서 정확히 `ffmpeg` 이름이 해석돼야 한다.
+#
+#  - Windows: winget/choco 설치분이 시스템 PATH에 잡혀 그대로 동작 → 정상.
+#  - macOS: 두 가지 함정으로 실패 →
+#       (1) ffmpeg 미설치
+#       (2) 설치돼 있어도 Apple Silicon Homebrew는 /opt/homebrew/bin 에 까는데,
+#           IDE/GUI로 띄운 백엔드 프로세스의 PATH엔 이 경로가 빠져 있는 경우가 많다.
+#           ("brew install ffmpeg 했는데 백엔드만 못 찾음")
+#
+# 어느 경우든 whisper는 FileNotFoundError를 던지고, 그게 아래 함수의
+# except Exception 에서 빈 문자열로 흡수되어 "유튜브 분석 실패"로만 보였다.
+# (OS마다 재현이 갈리던 원인)
+#
+# 해결: 모듈 로드 시 ffmpeg를 능동적으로 찾아 PATH에 보장한다.
+#   1) 이미 PATH에서 해석되면 그대로 사용
+#   2) macOS/Linux 표준 설치 경로(/opt/homebrew/bin 등)를 PATH에 보강 후 재확인
+#   3) 그래도 없으면 pip로 함께 설치되는 imageio-ffmpeg 의 번들 바이너리를
+#      `ffmpeg` 이름으로 노출 (OS·아키텍처 무관, 추가 수동 설치 불필요)
+# ─────────────────────────────────────────────────────────────
+
+# ffmpeg 사용 가능 여부 — 모듈 로드 시 1회 판정하여 캐싱
+FFMPEG_AVAILABLE: bool = False
+
+
+def _ensure_ffmpeg_on_path() -> bool:
+    """프로세스 PATH에서 `ffmpeg`가 해석되도록 보장. 최종 가용 여부를 반환."""
+    # 1) 이미 찾을 수 있으면 끝
+    if shutil.which("ffmpeg"):
+        return True
+
+    # 2) macOS(Apple Silicon/Intel)·Linux 표준 설치 경로를 PATH에 보강
+    candidate_dirs = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
+    current_path = os.environ.get("PATH", "")
+    path_parts = current_path.split(os.pathsep)
+    for d in candidate_dirs:
+        if os.path.isdir(d) and d not in path_parts:
+            current_path = d + os.pathsep + current_path
+            os.environ["PATH"] = current_path
+            path_parts = current_path.split(os.pathsep)
+    if shutil.which("ffmpeg"):
+        return True
+
+    # 3) 번들 바이너리(imageio-ffmpeg) 폴백 — 수동 설치 없이 OS 무관 동작
+    try:
+        import imageio_ffmpeg
+
+        exe = imageio_ffmpeg.get_ffmpeg_exe()  # 플랫폼별 정적 바이너리의 절대 경로
+        bin_dir = os.path.dirname(exe)
+
+        # imageio-ffmpeg의 바이너리 이름은 "ffmpeg-<os>-<arch>-<ver>" 형태라
+        # whisper가 부르는 정확한 이름("ffmpeg"/"ffmpeg.exe")으로 별칭을 만들어 둔다.
+        alias_name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+        alias_path = os.path.join(bin_dir, alias_name)
+        if not os.path.exists(alias_path):
+            try:
+                os.symlink(exe, alias_path)
+            except (OSError, NotImplementedError):
+                # 심볼릭 링크 불가 환경(권한·파일시스템 등) → 복사 폴백
+                shutil.copy2(exe, alias_path)
+
+        if bin_dir not in os.environ.get("PATH", "").split(os.pathsep):
+            os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+
+        return shutil.which("ffmpeg") is not None
+    except Exception as e:
+        print(f"⚠️ 번들 ffmpeg(imageio-ffmpeg) 준비 실패: {e}")
+        return False
+
+
+FFMPEG_AVAILABLE = _ensure_ffmpeg_on_path()
+if not FFMPEG_AVAILABLE:
+    print(
+        "❌ ffmpeg를 찾을 수 없습니다 — YouTube 전사(STT)가 동작하지 않습니다.\n"
+        "   설치: macOS  `brew install ffmpeg`\n"
+        "         Windows `winget install ffmpeg`\n"
+        "         Linux   `sudo apt install ffmpeg`\n"
+        "   또는 requirements.txt 의 imageio-ffmpeg 설치 여부를 확인하세요."
+    )
 
 
 # ─────────────────────────────────────────────────────────────
@@ -36,13 +122,24 @@ def get_transcript_via_whisper(url: str) -> str:
     """
     YouTube URL의 오디오를 yt-dlp로 내려받아 Whisper로 전사한 텍스트를 반환.
 
-    실패(빈 URL / 다운로드 실패 / 전사 예외) 시 빈 문자열을 반환하여
+    실패(빈 URL / ffmpeg 부재 / 다운로드 실패 / 전사 예외) 시 빈 문자열을 반환하여
     호출부(main.py)가 일관되게 '유튜브 분석 실패'로 처리하도록 한다.
 
     주의: Whisper의 transcribe는 내부적으로 ffmpeg로 오디오를 디코딩하므로
-    실행 환경에 ffmpeg가 설치되어 PATH에 등록돼 있어야 한다.
+    실행 환경에 ffmpeg가 PATH에 등록돼 있어야 한다. (모듈 로드 시
+    _ensure_ffmpeg_on_path()로 자동 보장 — Mac 등에서 미설치/PATH 누락 대응)
     """
     if not url:
+        return ""
+
+    # ffmpeg가 끝내 없으면 여기서 명확히 끊어 준다.
+    # (그러지 않으면 whisper가 던지는 FileNotFoundError가 아래 except에서
+    #  generic '전사 에러'로 뭉뚱그려져 원인 파악이 어려워진다.)
+    if not (FFMPEG_AVAILABLE or shutil.which("ffmpeg")):
+        print(
+            "❌ ffmpeg 미탑재로 YouTube 전사를 건너뜁니다 — 서버 환경 점검 필요 "
+            "(macOS: `brew install ffmpeg`)."
+        )
         return ""
 
     # 임시 작업 디렉토리 — 함수 종료 시 finally에서 정리
@@ -71,6 +168,13 @@ def get_transcript_via_whisper(url: str) -> str:
         result = model.transcribe(downloaded_path)
         return str(result.get("text", "")).strip()
 
+    except FileNotFoundError as e:
+        # ffmpeg가 PATH에서 사라진 경우 등 — 정확한 원인을 남긴다.
+        print(
+            f"❌ 실행 파일을 찾을 수 없습니다(ffmpeg 추정): {e} "
+            "— macOS는 `brew install ffmpeg` 후 백엔드 재시작을 확인하세요."
+        )
+        return ""
     except Exception as e:
         print(f"❌ Whisper 전사 중 에러 발생: {e}")
         return ""

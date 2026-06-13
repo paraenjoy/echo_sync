@@ -19,7 +19,7 @@
 import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useHistorySession } from "@/hooks/queries/useHistorySession";
-import { cn, getScoreTier, scoreTierClasses } from "@/lib/utils";
+import { cn, getScoreTier, scoreTierClasses, resolveStaticUrl } from "@/lib/utils";
 import { ScoreDisplay } from "@/components/common/ScoreDisplay";
 import { PageHeader } from "@/components/common/PageHeader";
 import { WordAnalysis } from "@/components/features/youtube/WordAnalysis";
@@ -347,11 +347,17 @@ function AnswerBlock({
         </div>
       )}
 
-      {/* 음성 비교 */}
-      {(log.user_tts_url || log.model_tts_url) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {/* 음성 비교 — 세 소스의 의미가 모두 다름:
+          · audio_url    = 사용자 원본 녹음 (진짜 "내 음성")
+          · user_tts_url = 사용자 문장을 Azure TTS가 정확히 발음한 교정 음성
+          · model_tts_url = 모범 답안 TTS */}
+      {(log.audio_url || log.user_tts_url || log.model_tts_url) && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {log.audio_url && (
+            <InlineAudio label="내 음성" src={log.audio_url} />
+          )}
           {log.user_tts_url && (
-            <InlineAudio label="내 음성" src={log.user_tts_url} />
+            <InlineAudio label="내 발음 교정" src={log.user_tts_url} />
           )}
           {log.model_tts_url && (
             <InlineAudio label="모범 답안" src={log.model_tts_url} />
@@ -412,7 +418,7 @@ function InlineAudio({ label, src }: { label: string; src: string }) {
       <p className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">
         {label}
       </p>
-      <audio controls src={src} className="w-full h-9" preload="none" />
+      <audio controls src={resolveStaticUrl(src) ?? src} className="w-full h-9" preload="none" />
     </div>
   );
 }

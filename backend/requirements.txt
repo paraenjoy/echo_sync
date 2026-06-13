@@ -29,6 +29,7 @@ openai
 yt-dlp
 pypdf
 numpy
+imageio-ffmpeg
 
 # ── HTTP 클라이언트 ──
 httpx
